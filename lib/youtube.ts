@@ -93,73 +93,101 @@ export async function fetchUploadsPlaylistId(
   };
 }
 
+type RawPlaylistItem = {
+  contentDetails: { videoId: string };
+  snippet: { title: string; publishedAt: string; thumbnails?: { medium?: { url: string } } };
+};
+
 /**
- * Step 2 — fetch videos from the uploads playlist.
+ * Step 2 — paginate the uploads playlist, fetching 50 at a time.
+ * Stops as soon as the last video in a page is older than 30 days.
+ * Returns only videos published within the last 30 days.
  */
 export async function fetchPlaylistVideos(
   playlistId: string,
-  apiKey: string,
-  maxResults = 10
+  apiKey: string
 ): Promise<VideoItem[]> {
-  const url = new URL(`${YT_BASE}/playlistItems`);
-  url.searchParams.set("part", "snippet,contentDetails");
-  url.searchParams.set("playlistId", playlistId);
-  url.searchParams.set("maxResults", String(maxResults));
-  url.searchParams.set("key", apiKey);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
 
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message ?? `playlistItems.list failed (${res.status})`);
-  }
+  const allItems: VideoItem[] = [];
+  let pageToken: string | undefined;
 
-  const data = await res.json();
+  do {
+    const url = new URL(`${YT_BASE}/playlistItems`);
+    url.searchParams.set("part", "snippet,contentDetails");
+    url.searchParams.set("playlistId", playlistId);
+    url.searchParams.set("maxResults", "50");
+    url.searchParams.set("key", apiKey);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
 
-  return (data.items ?? []).map(
-    (item: {
-      contentDetails: { videoId: string };
-      snippet: { title: string; publishedAt: string; thumbnails?: { medium?: { url: string } } };
-    }) => ({
-      videoId: item.contentDetails.videoId,
-      title: item.snippet.title,
-      publishedAt: item.snippet.publishedAt,
-      thumbnail: item.snippet.thumbnails?.medium?.url ?? "",
-      viewCount: null,
-      likeCount: null,
-      commentCount: null,
-    })
-  );
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message ?? `playlistItems.list failed (${res.status})`);
+    }
+
+    const data = await res.json();
+    const items: RawPlaylistItem[] = data.items ?? [];
+
+    for (const item of items) {
+      if (new Date(item.snippet.publishedAt) >= cutoff) {
+        allItems.push({
+          videoId: item.contentDetails.videoId,
+          title: item.snippet.title,
+          publishedAt: item.snippet.publishedAt,
+          thumbnail: item.snippet.thumbnails?.medium?.url ?? "",
+          viewCount: null,
+          likeCount: null,
+          commentCount: null,
+        });
+      }
+    }
+
+    // Stop paginating if the last item on this page is older than the cutoff
+    const lastItem = items[items.length - 1];
+    const lastDate = lastItem ? new Date(lastItem.snippet.publishedAt) : new Date(0);
+    if (lastDate < cutoff || !data.nextPageToken) break;
+
+    pageToken = data.nextPageToken;
+  } while (true);
+
+  return allItems;
 }
 
 /**
  * Step 3 — fetch view/like/comment counts for a list of video IDs.
+ * Batches requests in groups of 50 (API limit).
  * Returns a map of videoId → stats for easy merging.
  */
 export async function fetchVideoStats(
   videoIds: string[],
   apiKey: string
 ): Promise<Record<string, { viewCount: number | null; likeCount: number | null; commentCount: number | null }>> {
-  const url = new URL(`${YT_BASE}/videos`);
-  url.searchParams.set("part", "statistics");
-  url.searchParams.set("id", videoIds.join(","));
-  url.searchParams.set("key", apiKey);
-
-  const res = await fetch(url.toString());
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message ?? `videos.list failed (${res.status})`);
-  }
-
-  const data = await res.json();
   const map: Record<string, { viewCount: number | null; likeCount: number | null; commentCount: number | null }> = {};
 
-  for (const item of data.items ?? []) {
-    const s = item.statistics;
-    map[item.id] = {
-      viewCount: s.viewCount != null ? Number(s.viewCount) : null,
-      likeCount: s.likeCount != null ? Number(s.likeCount) : null,
-      commentCount: s.commentCount != null ? Number(s.commentCount) : null,
-    };
+  for (let i = 0; i < videoIds.length; i += 50) {
+    const batch = videoIds.slice(i, i + 50);
+    const url = new URL(`${YT_BASE}/videos`);
+    url.searchParams.set("part", "statistics");
+    url.searchParams.set("id", batch.join(","));
+    url.searchParams.set("key", apiKey);
+
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message ?? `videos.list failed (${res.status})`);
+    }
+
+    const data = await res.json();
+    for (const item of data.items ?? []) {
+      const s = item.statistics;
+      map[item.id] = {
+        viewCount: s.viewCount != null ? Number(s.viewCount) : null,
+        likeCount: s.likeCount != null ? Number(s.likeCount) : null,
+        commentCount: s.commentCount != null ? Number(s.commentCount) : null,
+      };
+    }
   }
 
   return map;

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const { uploadsPlaylistId, channelTitle, channelThumbnail } =
       await fetchUploadsPlaylistId(channelInput, apiKey);
 
-    const videos = await fetchPlaylistVideos(uploadsPlaylistId, apiKey, 10);
+    const videos = await fetchPlaylistVideos(uploadsPlaylistId, apiKey);
 
     const statsMap = await fetchVideoStats(videos.map((v) => v.videoId), apiKey);
     const videosWithStats = videos.map((v) => ({ ...v, ...statsMap[v.videoId] }));
