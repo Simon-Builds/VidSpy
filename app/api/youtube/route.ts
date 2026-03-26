@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { uploadsPlaylistId, channelTitle, channelThumbnail } =
+    const { uploadsPlaylistId, channelTitle, channelThumbnail, subscriberCount, totalViews } =
       await fetchUploadsPlaylistId(channelInput, apiKey);
 
     const videos = await fetchPlaylistVideos(uploadsPlaylistId, apiKey);
@@ -29,7 +29,16 @@ export async function POST(req: NextRequest) {
     const statsMap = await fetchVideoStats(videos.map((v) => v.videoId), apiKey);
     const videosWithStats = videos.map((v) => ({ ...v, ...statsMap[v.videoId] }));
 
-    return NextResponse.json({ channelTitle, channelThumbnail, videos: videosWithStats });
+    const channelId = uploadsPlaylistId.replace(/^UU/, "UC");
+    return NextResponse.json({
+      channelId,
+      channelTitle,
+      channelThumbnail,
+      uploadsPlaylistId,
+      subscriberCount,
+      totalViews,
+      videos: videosWithStats,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 400 });

@@ -68,11 +68,17 @@ export function parseChannelInput(input: string): {
 export async function fetchUploadsPlaylistId(
   input: string,
   apiKey: string
-): Promise<{ uploadsPlaylistId: string; channelTitle: string; channelThumbnail: string }> {
+): Promise<{
+  uploadsPlaylistId: string;
+  channelTitle: string;
+  channelThumbnail: string;
+  subscriberCount: number | null;
+  totalViews: number | null;
+}> {
   const { param, value } = parseChannelInput(input);
 
   const url = new URL(`${YT_BASE}/channels`);
-  url.searchParams.set("part", "contentDetails,snippet");
+  url.searchParams.set("part", "contentDetails,snippet,statistics");
   url.searchParams.set(param, value);
   url.searchParams.set("key", apiKey);
 
@@ -86,10 +92,13 @@ export async function fetchUploadsPlaylistId(
   const item = data.items?.[0];
   if (!item) throw new Error("Channel not found. Check the URL or handle and try again.");
 
+  const stats = item.statistics ?? {};
   return {
     uploadsPlaylistId: item.contentDetails.relatedPlaylists.uploads,
     channelTitle: item.snippet.title,
     channelThumbnail: item.snippet.thumbnails?.default?.url ?? "",
+    subscriberCount: stats.subscriberCount != null ? Number(stats.subscriberCount) : null,
+    totalViews: stats.viewCount != null ? Number(stats.viewCount) : null,
   };
 }
 
