@@ -34,6 +34,7 @@ interface VideoStats {
 
 interface PreviousSnapshot {
   viewCount: number;
+  momentumScore: number | null;
   recordedAt: Timestamp;
 }
 
@@ -43,13 +44,31 @@ interface PreviousSnapshot {
 
 /**
  * Decide whether to poll a video on this run.
- * - Under 48 h → always poll (hourly cadence).
- * - 48 h and older → only poll once a day (when UTC hour === 0).
+ *
+ * Tiered frequency to optimise YouTube API quota:
+ *  1. 30-day hard cutoff → never poll.
+ *  2. Hourly polling   → video < 48 h old  OR  latestMomentum > 2.0
+ *     (the "Viral Exception" — an older video spiking gets hourly attention).
+ *  3. Daily polling     → everything else (48 h – 30 d, momentum ≤ 2.0),
+ *     only runs when UTC hour === 0.
  */
-function shouldPollVideo(publishedAt: string): boolean {
+function shouldPollVideo(
+  publishedAt: string,
+  latestMomentum: number | null
+): boolean {
   const ageHours =
     (Date.now() - new Date(publishedAt).getTime()) / 3_600_000;
+
+  // Hard cutoff — 30 days
+  if (ageHours > 30 * 24) return false;
+
+  // Hourly: fresh video
   if (ageHours < 48) return true;
+
+  // Hourly: Viral Exception — momentum spike on an older video
+  if (latestMomentum != null && latestMomentum > 2.0) return true;
+
+  // Daily: everything else — only at midnight UTC
   return new Date().getUTCHours() === 0;
 }
 
@@ -137,7 +156,7 @@ async function fetchVideoStatsBatch(
 
 /**
  * Read the most recent snapshot for each videoId from a channel's snapshots
- * sub-collection. Returns a map of videoId → { viewCount, recordedAt }.
+ * sub-collection. Returns a map of videoId → { viewCount, momentumScore, recordedAt }.
  */
 async function getPreviousSnapshots(
   channelId: string,
@@ -162,6 +181,7 @@ async function getPreviousSnapshots(
     if (!existing || recordedAt.seconds > existing.recordedAt.seconds) {
       latestMap.set(vid, {
         viewCount: data.viewCount as number,
+        momentumScore: (data.momentumScore as number) ?? null,
         recordedAt,
       });
     }
@@ -201,30 +221,34 @@ export const pollTrackedChannels = onSchedule(
       const { uploadsPlaylistId } = channelDoc.data() as ChannelDoc;
 
       try {
-        // 1. Fetch recent videos
+        // 1. Fetch recent videos (last 30 days)
         const allVideos = await fetchRecentVideos(uploadsPlaylistId, apiKey);
-        const videosToProcess = allVideos.filter((v) =>
-          shouldPollVideo(v.publishedAt)
+
+        // 2. Read previous snapshots FIRST — we need latestMomentum to decide
+        //    polling frequency (the "Viral Exception" for older videos spiking)
+        const prevSnapshots = await getPreviousSnapshots(
+          channelId,
+          allVideos.map((v) => v.videoId)
         );
+
+        // 3. Filter using tiered frequency logic
+        const videosToProcess = allVideos.filter((v) => {
+          const prev = prevSnapshots.get(v.videoId);
+          return shouldPollVideo(v.publishedAt, prev?.momentumScore ?? null);
+        });
 
         if (videosToProcess.length === 0) {
           console.log(`Channel ${channelId}: no videos to poll this run.`);
           continue;
         }
 
-        // 2. Batch-fetch current stats from YouTube
+        // 4. Batch-fetch current stats from YouTube
         const statsMap = await fetchVideoStatsBatch(
           videosToProcess.map((v) => v.videoId),
           apiKey
         );
 
-        // 3. Read previous snapshots from Firestore to compute deltas
-        const prevSnapshots = await getPreviousSnapshots(
-          channelId,
-          videosToProcess.map((v) => v.videoId)
-        );
-
-        // 4. Compute delta-based VPH for each video
+        // 5. Compute delta-based VPH for each video
         const vphMap = new Map<string, number | null>();
         for (const video of videosToProcess) {
           const currentViews = statsMap[video.videoId]?.viewCount;
@@ -250,7 +274,7 @@ export const pollTrackedChannels = onSchedule(
           vphMap.set(video.videoId, Math.round(vph * 100) / 100);
         }
 
-        // 5. Compute avg VPH from first 5 videos that have a real VPH
+        // 6. Compute avg VPH from first 5 videos that have a real VPH
         const baselineVphs: number[] = [];
         for (const video of videosToProcess.slice(0, 5)) {
           const vph = vphMap.get(video.videoId);
@@ -261,7 +285,7 @@ export const pollTrackedChannels = onSchedule(
             ? baselineVphs.reduce((a, b) => a + b, 0) / baselineVphs.length
             : null;
 
-        // 6. Write snapshots + track top momentum
+        // 7. Write snapshots + track top momentum
         const batch = db.batch();
         let topMomentumVideoId: string | null = null;
         let topMomentumScore = 0;
