@@ -19,12 +19,22 @@ interface VideoItem {
   title: string;
   publishedAt: string;
   thumbnail: string;
+  viewCount: number | null;
+  likeCount: number | null;
+  commentCount: number | null;
 }
 
 interface ApiResult {
   channelTitle: string;
   channelThumbnail: string;
   videos: VideoItem[];
+}
+
+function formatNumber(n: number | null) {
+  if (n == null) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
 }
 
 function formatDate(iso: string) {
@@ -72,7 +82,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-background px-4 py-12">
-      <div className="mx-auto max-w-4xl space-y-8">
+      <div className="mx-auto max-w-6xl space-y-8">
         {/* Header */}
         <div className="flex items-center gap-3">
           <PlaySquare className="h-8 w-8 text-red-500" />
@@ -138,6 +148,9 @@ export default function Home() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="pl-6">Video Title</TableHead>
+                    <TableHead className="w-28 text-right">Views</TableHead>
+                    <TableHead className="w-24 text-right">Likes</TableHead>
+                    <TableHead className="w-28 text-right">Comments</TableHead>
                     <TableHead className="w-36 pr-6 text-right">Published</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -153,6 +166,15 @@ export default function Home() {
                         >
                           {video.title}
                         </a>
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {formatNumber(video.viewCount)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {formatNumber(video.likeCount)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {formatNumber(video.commentCount)}
                       </TableCell>
                       <TableCell className="pr-6 text-right text-muted-foreground">
                         {formatDate(video.publishedAt)}

@@ -5,6 +5,9 @@ export interface VideoItem {
   title: string;
   publishedAt: string;
   thumbnail: string;
+  viewCount: number | null;
+  likeCount: number | null;
+  commentCount: number | null;
 }
 
 export interface ChannelResult {
@@ -121,6 +124,43 @@ export async function fetchPlaylistVideos(
       title: item.snippet.title,
       publishedAt: item.snippet.publishedAt,
       thumbnail: item.snippet.thumbnails?.medium?.url ?? "",
+      viewCount: null,
+      likeCount: null,
+      commentCount: null,
     })
   );
+}
+
+/**
+ * Step 3 — fetch view/like/comment counts for a list of video IDs.
+ * Returns a map of videoId → stats for easy merging.
+ */
+export async function fetchVideoStats(
+  videoIds: string[],
+  apiKey: string
+): Promise<Record<string, { viewCount: number | null; likeCount: number | null; commentCount: number | null }>> {
+  const url = new URL(`${YT_BASE}/videos`);
+  url.searchParams.set("part", "statistics");
+  url.searchParams.set("id", videoIds.join(","));
+  url.searchParams.set("key", apiKey);
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message ?? `videos.list failed (${res.status})`);
+  }
+
+  const data = await res.json();
+  const map: Record<string, { viewCount: number | null; likeCount: number | null; commentCount: number | null }> = {};
+
+  for (const item of data.items ?? []) {
+    const s = item.statistics;
+    map[item.id] = {
+      viewCount: s.viewCount != null ? Number(s.viewCount) : null,
+      likeCount: s.likeCount != null ? Number(s.likeCount) : null,
+      commentCount: s.commentCount != null ? Number(s.commentCount) : null,
+    };
+  }
+
+  return map;
 }

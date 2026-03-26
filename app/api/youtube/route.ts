@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchUploadsPlaylistId, fetchPlaylistVideos } from "@/lib/youtube";
+import { fetchUploadsPlaylistId, fetchPlaylistVideos, fetchVideoStats } from "@/lib/youtube";
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.YOUTUBE_API_KEY;
@@ -26,7 +26,10 @@ export async function POST(req: NextRequest) {
 
     const videos = await fetchPlaylistVideos(uploadsPlaylistId, apiKey, 10);
 
-    return NextResponse.json({ channelTitle, channelThumbnail, videos });
+    const statsMap = await fetchVideoStats(videos.map((v) => v.videoId), apiKey);
+    const videosWithStats = videos.map((v) => ({ ...v, ...statsMap[v.videoId] }));
+
+    return NextResponse.json({ channelTitle, channelThumbnail, videos: videosWithStats });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 400 });
