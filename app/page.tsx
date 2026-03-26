@@ -27,9 +27,8 @@ import {
   trackChannelWithData,
   removeTrackedChannel,
   getTrackedChannels,
-  getLatestSnapshotsForChannel,
+  getTrackedChannelData,
   type TrackedChannel,
-  type VideoSnapshot,
 } from "@/lib/firestore";
 
 // ---------------------------------------------------------------------------
@@ -129,7 +128,7 @@ function MomentumBadge({
 }
 
 /** Shared video stats table */
-function VideoTable({ videos }: { videos: VideoItem[] }) {
+function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; showMomentum?: boolean }) {
   return (
     <>
       <Table>
@@ -139,18 +138,22 @@ function VideoTable({ videos }: { videos: VideoItem[] }) {
             <TableHead className="w-28 text-right">Views</TableHead>
             <TableHead className="w-24 text-right">Likes</TableHead>
             <TableHead className="w-28 text-right">Comments</TableHead>
-            <TableHead
-              className="w-28 text-right"
-              title="Views gained per hour (delta between snapshots)"
-            >
-              VPH
-            </TableHead>
-            <TableHead
-              className="w-44 text-right"
-              title="Relative to channel's 30-day avg VPH. 1.0x = average, 2.0x+ = outperforming"
-            >
-              Momentum
-            </TableHead>
+            {showMomentum && (
+              <>
+                <TableHead
+                  className="w-28 text-right"
+                  title="Views gained per hour (delta between snapshots)"
+                >
+                  VPH
+                </TableHead>
+                <TableHead
+                  className="w-44 text-right"
+                  title="Relative to channel's 30-day avg VPH. 1.0x = average, 2.0x+ = outperforming"
+                >
+                  Momentum
+                </TableHead>
+              </>
+            )}
             <TableHead className="w-36 pr-6 text-right">Published</TableHead>
           </TableRow>
         </TableHeader>
@@ -176,17 +179,21 @@ function VideoTable({ videos }: { videos: VideoItem[] }) {
               <TableCell className="text-right text-muted-foreground">
                 {formatNumber(video.commentCount)}
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">
-                {video.vph != null
-                  ? `${formatNumber(Math.round(video.vph))}/hr`
-                  : "—"}
-              </TableCell>
-              <TableCell className="text-right">
-                <MomentumBadge
-                  label={video.momentumLabel}
-                  score={video.momentumScore}
-                />
-              </TableCell>
+              {showMomentum && (
+                <>
+                  <TableCell className="text-right text-muted-foreground">
+                    {video.vph != null
+                      ? `${formatNumber(Math.round(video.vph))}/hr`
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <MomentumBadge
+                      label={video.momentumLabel}
+                      score={video.momentumScore}
+                    />
+                  </TableCell>
+                </>
+              )}
               <TableCell className="pr-6 text-right text-muted-foreground">
                 {formatDate(video.publishedAt)}
               </TableCell>
@@ -252,42 +259,29 @@ export default function Home() {
       .finally(() => setLoadingTracked(false));
   }, []);
 
-  // Fetch video data when a tracked channel is selected
+  // Fetch video data from Firestore cache when a tracked channel is selected
   const fetchChannelData = useCallback(
     async (channelId: string) => {
       setLoadingSelected(true);
       setSelectedData(null);
       try {
-        const res = await fetch("/api/youtube", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channelInput: channelId }),
+        const cached = await getTrackedChannelData(channelId);
+        if (!cached) return;
+
+        const videos: VideoItem[] = cached.videos.map((v) => ({
+          ...v,
+          momentumLabel: getMomentumLabel(v.momentumScore),
+        }));
+
+        setSelectedData({
+          channelId: cached.channelId,
+          channelTitle: cached.channelTitle,
+          channelThumbnail: cached.channelThumbnail,
+          uploadsPlaylistId: "",
+          subscriberCount: cached.subscriberCount,
+          totalViews: cached.totalViews,
+          videos,
         });
-        const data = await res.json();
-        if (!res.ok) return;
-
-        // Enrich with Firestore snapshots
-        let enrichedVideos: VideoItem[] = data.videos;
-        try {
-          const snapshots: Map<string, VideoSnapshot> =
-            await getLatestSnapshotsForChannel(data.channelId);
-          if (snapshots.size > 0) {
-            enrichedVideos = data.videos.map((v: VideoItem) => {
-              const snap = snapshots.get(v.videoId);
-              if (!snap) return v;
-              return {
-                ...v,
-                vph: snap.vph,
-                momentumScore: snap.momentumScore,
-                momentumLabel: getMomentumLabel(snap.momentumScore),
-              };
-            });
-          }
-        } catch {
-          // Non-fatal
-        }
-
-        setSelectedData({ ...data, videos: enrichedVideos });
       } catch {
         // Silently fail — user can re-click
       } finally {
@@ -328,28 +322,7 @@ export default function Home() {
         return;
       }
 
-      // Enrich with Firestore snapshots if available
-      let enrichedVideos: VideoItem[] = data.videos;
-      try {
-        const snapshots: Map<string, VideoSnapshot> =
-          await getLatestSnapshotsForChannel(data.channelId);
-        if (snapshots.size > 0) {
-          enrichedVideos = data.videos.map((v: VideoItem) => {
-            const snap = snapshots.get(v.videoId);
-            if (!snap) return v;
-            return {
-              ...v,
-              vph: snap.vph,
-              momentumScore: snap.momentumScore,
-              momentumLabel: getMomentumLabel(snap.momentumScore),
-            };
-          });
-        }
-      } catch {
-        // Non-fatal
-      }
-
-      setResult({ ...data, videos: enrichedVideos });
+      setResult(data);
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -370,6 +343,8 @@ export default function Home() {
         result.totalViews,
         result.videos.map((v) => ({
           videoId: v.videoId,
+          title: v.title,
+          thumbnail: v.thumbnail,
           publishedAt: v.publishedAt,
           viewCount: v.viewCount,
           likeCount: v.likeCount,
@@ -437,7 +412,7 @@ export default function Home() {
     },
     {
       id: "search",
-      label: "Analyse",
+      label: "Search",
       icon: <Search className="h-4 w-4" />,
     },
   ];
@@ -450,7 +425,7 @@ export default function Home() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold tracking-tight">
-          Analyse a Channel
+          Search a Channel
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
           Enter a YouTube channel URL, handle, or ID to fetch recent videos.
@@ -524,7 +499,7 @@ export default function Home() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <VideoTable videos={result.videos} />
+            <VideoTable videos={result.videos} showMomentum={false} />
           </CardContent>
         </Card>
       )}
@@ -544,7 +519,7 @@ export default function Home() {
             <Radio className="h-10 w-10 text-muted-foreground/40 mb-4" />
             <h3 className="text-lg font-medium">No channels tracked yet</h3>
             <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-              Go to <strong>Analyse</strong>, search for a channel, and click{" "}
+              Go to <strong>Search</strong>, find a channel, and click{" "}
               <strong>Track Channel</strong> to start monitoring.
             </p>
           </div>

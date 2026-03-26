@@ -21,6 +21,8 @@ interface ChannelDoc {
 
 interface VideoEntry {
   videoId: string;
+  title: string;
+  thumbnail: string;
   publishedAt: string;
 }
 
@@ -75,7 +77,11 @@ async function fetchRecentVideos(
   const data = await res.json() as {
     items?: {
       contentDetails: { videoId: string };
-      snippet: { publishedAt: string };
+      snippet: {
+        title?: string;
+        publishedAt: string;
+        thumbnails?: Record<string, { url: string }>;
+      };
     }[];
   };
 
@@ -83,6 +89,11 @@ async function fetchRecentVideos(
     .filter((item) => new Date(item.snippet.publishedAt) >= cutoff)
     .map((item) => ({
       videoId: item.contentDetails.videoId,
+      title: item.snippet.title ?? "",
+      thumbnail:
+        item.snippet.thumbnails?.medium?.url ??
+        item.snippet.thumbnails?.default?.url ??
+        "",
       publishedAt: item.snippet.publishedAt,
     }));
 }
@@ -288,10 +299,17 @@ export const pollTrackedChannels = onSchedule(
           }
         }
 
-        // Update parent channel doc
+        // Update parent channel doc — refresh video metadata + metrics
+        const videosMeta = allVideos.map((v) => ({
+          videoId: v.videoId,
+          title: v.title,
+          thumbnail: v.thumbnail,
+          publishedAt: v.publishedAt,
+        }));
         batch.update(channelDoc.ref, {
           lastUpdated: Timestamp.fromDate(now),
           currentTopMomentum: topMomentumVideoId,
+          videos: videosMeta,
         });
 
         await batch.commit();

@@ -20,6 +20,8 @@ export interface TrackedChannel {
   uploadsPlaylistId: string;
   lastUpdated: Timestamp | null;
   currentTopMomentum: string | null;
+  subscriberCount?: number | null;
+  totalViews?: number | null;
 }
 
 export interface VideoSnapshot {
@@ -30,6 +32,34 @@ export interface VideoSnapshot {
   vph: number | null;
   momentumScore: number | null;
   recordedAt: Timestamp;
+}
+
+/** Video metadata stored on the channel doc — no stats, just identity + publish info. */
+export interface VideoMeta {
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  publishedAt: string;
+}
+
+/** Full channel data assembled from Firestore (channel doc + snapshots). */
+export interface TrackedChannelData {
+  channelId: string;
+  channelTitle: string;
+  channelThumbnail: string;
+  subscriberCount: number | null;
+  totalViews: number | null;
+  videos: {
+    videoId: string;
+    title: string;
+    thumbnail: string;
+    publishedAt: string;
+    viewCount: number | null;
+    likeCount: number | null;
+    commentCount: number | null;
+    vph: number | null;
+    momentumScore: number | null;
+  }[];
 }
 
 /**
@@ -55,7 +85,6 @@ export async function addTrackedChannel(
     { merge: true }
   );
 
-  // Add to org watchlist (no duplicates)
   const orgRef = doc(db, "organizations", ORG_ID);
   const orgSnap = await getDoc(orgRef);
   const existing: string[] = orgSnap.exists()
@@ -74,11 +103,13 @@ export async function addTrackedChannel(
  * Track a channel AND immediately cache the current video metrics as the
  * first baseline snapshot. VPH and momentum are null on this first snapshot
  * because we need at least two data points to compute a real delta.
- * The Cloud Function will compute actual VPH on the next hourly run by
- * comparing against this baseline.
+ * Also stores video metadata (title, thumbnail, publishedAt) on the channel
+ * doc so the Tracked Channels page can render without calling the YouTube API.
  */
 export interface TrackVideoInput {
   videoId: string;
+  title: string;
+  thumbnail: string;
   publishedAt: string;
   viewCount: number | null;
   likeCount: number | null;
@@ -101,8 +132,17 @@ export async function trackChannelWithData(
   const snapshotMap = new Map<string, VideoSnapshot>();
   const batch = writeBatch(db);
 
-  // Write baseline snapshots — raw counts only, VPH/momentum = null
+  // Build video metadata array for the channel doc
+  const videosMeta: VideoMeta[] = [];
+
   for (const video of videos) {
+    videosMeta.push({
+      videoId: video.videoId,
+      title: video.title,
+      thumbnail: video.thumbnail,
+      publishedAt: video.publishedAt,
+    });
+
     if (video.viewCount == null) continue;
 
     const snapRef = doc(
@@ -127,7 +167,7 @@ export async function trackChannelWithData(
     snapshotMap.set(video.videoId, snapshot);
   }
 
-  // Write the channel doc
+  // Write the channel doc — includes video metadata
   const channelRef = doc(db, "tracked_channels", channelId);
   batch.set(
     channelRef,
@@ -139,6 +179,7 @@ export async function trackChannelWithData(
       totalViews,
       lastUpdated: firestoreNow,
       currentTopMomentum: null,
+      videos: videosMeta,
     },
     { merge: true }
   );
@@ -181,7 +222,7 @@ export async function removeTrackedChannel(channelId: string): Promise<void> {
 }
 
 /**
- * Return all documents from tracked_channels.
+ * Return all documents from tracked_channels (lightweight — for the sidebar).
  */
 export async function getTrackedChannels(): Promise<TrackedChannel[]> {
   const snap = await getDocs(collection(db, "tracked_channels"));
@@ -194,8 +235,6 @@ export async function getTrackedChannels(): Promise<TrackedChannel[]> {
 /**
  * Return the latest snapshot for every video in a channel's snapshots
  * sub-collection, keyed by videoId.
- * Doc IDs are "{isoTimestamp}_{videoId}" so the most recent per video
- * is found by sorting on recordedAt.seconds descending.
  */
 export async function getLatestSnapshotsForChannel(
   channelId: string
@@ -208,7 +247,6 @@ export async function getLatestSnapshotsForChannel(
   );
   const snap = await getDocs(snapshotsRef);
 
-  // Build a map: videoId → latest snapshot
   const latestMap = new Map<string, VideoSnapshot>();
   for (const d of snap.docs) {
     const data = d.data() as VideoSnapshot;
@@ -219,4 +257,49 @@ export async function getLatestSnapshotsForChannel(
   }
 
   return latestMap;
+}
+
+/**
+ * Read a tracked channel's full data from Firestore — channel doc (has video
+ * metadata like title/thumbnail/publishedAt) merged with latest snapshots
+ * (has viewCount/likeCount/commentCount/vph/momentumScore).
+ * No YouTube API calls needed.
+ */
+export async function getTrackedChannelData(
+  channelId: string
+): Promise<TrackedChannelData | null> {
+  const channelRef = doc(db, "tracked_channels", channelId);
+  const channelSnap = await getDoc(channelRef);
+  if (!channelSnap.exists()) return null;
+
+  const data = channelSnap.data();
+  const videosMeta: VideoMeta[] = data.videos ?? [];
+
+  // Get latest snapshots
+  const snapshots = await getLatestSnapshotsForChannel(channelId);
+
+  // Merge metadata + snapshots
+  const mergedVideos = videosMeta.map((meta) => {
+    const snap = snapshots.get(meta.videoId);
+    return {
+      videoId: meta.videoId,
+      title: meta.title,
+      thumbnail: meta.thumbnail,
+      publishedAt: meta.publishedAt,
+      viewCount: snap?.viewCount ?? null,
+      likeCount: snap?.likeCount ?? null,
+      commentCount: snap?.commentCount ?? null,
+      vph: snap?.vph ?? null,
+      momentumScore: snap?.momentumScore ?? null,
+    };
+  });
+
+  return {
+    channelId,
+    channelTitle: data.channelTitle ?? "",
+    channelThumbnail: data.channelThumbnail ?? "",
+    subscriberCount: data.subscriberCount ?? null,
+    totalViews: data.totalViews ?? null,
+    videos: mergedVideos,
+  };
 }
