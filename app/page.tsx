@@ -219,8 +219,10 @@ function VelocityChart({ data }: { data: ChannelVphSnapshot[] }) {
 // VideoTable
 // ---------------------------------------------------------------------------
 
+type SortKey = "viewCount" | "likeCount" | "commentCount" | "vph" | "engagementRate" | "publishedAt";
+
 function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?: boolean }) {
-  const [vphSort, setVphSort] = useState<"asc" | "desc" | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
 
   const vphValues = videos.map((v) => v.vph).filter((v): v is number => v != null);
   const avgVph = vphValues.length > 0
@@ -232,15 +234,52 @@ function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?:
     ? erValues.reduce((s, v) => s + v, 0) / erValues.length
     : null;
 
-  const sorted = vphSort
+  const cycleSort = (key: SortKey) =>
+    setSort((prev) => {
+      if (prev?.key !== key) return { key, dir: "desc" };
+      if (prev.dir === "desc") return { key, dir: "asc" };
+      return null;
+    });
+
+  const sorted = sort
     ? [...videos].sort((a, b) => {
-        const av = a.vph ?? -1, bv = b.vph ?? -1;
-        return vphSort === "desc" ? bv - av : av - bv;
+        const av =
+          sort.key === "publishedAt"
+            ? new Date(a.publishedAt).getTime()
+            : (a[sort.key] as number | null) ?? -1;
+        const bv =
+          sort.key === "publishedAt"
+            ? new Date(b.publishedAt).getTime()
+            : (b[sort.key] as number | null) ?? -1;
+        return sort.dir === "desc" ? bv - av : av - bv;
       })
     : videos;
 
-  const cycleSort = () =>
-    setVphSort((p) => (p === null ? "desc" : p === "desc" ? "asc" : null));
+  const SortIndicator = ({ col }: { col: SortKey }) =>
+    sort?.key === col ? (
+      sort.dir === "desc" ? (
+        <ChevronDown className="h-3.5 w-3.5" />
+      ) : (
+        <ChevronUp className="h-3.5 w-3.5" />
+      )
+    ) : (
+      <span className="flex flex-col opacity-30">
+        <ChevronUp className="h-2.5 w-2.5 -mb-0.5" />
+        <ChevronDown className="h-2.5 w-2.5" />
+      </span>
+    );
+
+  const sortableHead = (col: SortKey, label: string, className: string) => (
+    <TableHead
+      className={`${className} cursor-pointer select-none hover:text-foreground transition-colors ${sort?.key === col ? "text-foreground" : ""}`}
+      onClick={() => cycleSort(col)}
+    >
+      <span className="inline-flex items-center justify-end gap-1">
+        {label}
+        <SortIndicator col={col} />
+      </span>
+    </TableHead>
+  );
 
   return (
     <Table>
@@ -249,44 +288,12 @@ function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?:
           <TableHead className="pl-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Video
           </TableHead>
-          <TableHead className="w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Views
-          </TableHead>
-          <TableHead className="w-24 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Likes
-          </TableHead>
-          <TableHead className="w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Comments
-          </TableHead>
-          {showVph && (
-            <TableHead
-              className="w-36 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground transition-colors"
-              onClick={cycleSort}
-              title="Views gained per hour — click to sort"
-            >
-              <span className="inline-flex items-center justify-end gap-1">
-                VPH
-                {vphSort === "desc" ? (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                ) : vphSort === "asc" ? (
-                  <ChevronUp className="h-3.5 w-3.5" />
-                ) : (
-                  <span className="flex flex-col opacity-30">
-                    <ChevronUp className="h-2.5 w-2.5 -mb-0.5" />
-                    <ChevronDown className="h-2.5 w-2.5" />
-                  </span>
-                )}
-              </span>
-            </TableHead>
-          )}
-          {showVph && (
-            <TableHead className="w-32 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Engagement
-            </TableHead>
-          )}
-          <TableHead className="w-36 pr-6 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Published
-          </TableHead>
+          {sortableHead("viewCount",     "Views",    "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
+          {sortableHead("likeCount",     "Likes",    "w-24 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
+          {sortableHead("commentCount",  "Comments", "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
+          {showVph && sortableHead("vph",            "VPH",        "w-36 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
+          {showVph && sortableHead("engagementRate", "Engagement", "w-32 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
+          {sortableHead("publishedAt",   "Published", "w-36 pr-6 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
         </TableRow>
       </TableHeader>
       <TableBody>
