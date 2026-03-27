@@ -33,11 +33,12 @@ import {
 } from "@/components/ui/table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from "recharts";
 import {
@@ -45,9 +46,9 @@ import {
   removeTrackedChannel,
   getTrackedChannels,
   getTrackedChannelData,
-  getChannelVphHistory,
+  getVideoVphHistory,
   type TrackedChannel,
-  type ChannelVphSnapshot,
+  type VideoVphChartData,
 } from "@/lib/firestore";
 
 // ---------------------------------------------------------------------------
@@ -133,17 +134,22 @@ function StatCard({
 }
 
 // ---------------------------------------------------------------------------
-// VelocityChart — purple area chart of channel-wide VPH over time
+// MultiLineVphChart — per-video VPH trend lines (replaces single area chart)
 // ---------------------------------------------------------------------------
+
+const LINE_COLORS = [
+  "#a78bfa", "#60a5fa", "#34d399", "#fb923c", "#f472b6",
+  "#c084fc", "#38bdf8", "#4ade80", "#fbbf24", "#f87171",
+];
 
 function VelocityChartSkeleton() {
   return (
     <div className="rounded-lg border border-border bg-card p-5">
       <div className="mb-4">
-        <p className="text-sm font-semibold text-foreground">Channel Velocity</p>
-        <p className="text-xs text-muted-foreground mt-0.5">Views per hour — last 24 hours</p>
+        <p className="text-sm font-semibold text-foreground">Video Velocity</p>
+        <p className="text-xs text-muted-foreground mt-0.5">VPH per video — top 10 most active</p>
       </div>
-      <div className="h-[160px] flex items-center justify-center">
+      <div className="h-[220px] flex items-center justify-center">
         <p className="text-xs text-muted-foreground/50">
           Collecting data — check back after the next hourly poll
         </p>
@@ -152,32 +158,31 @@ function VelocityChartSkeleton() {
   );
 }
 
-function VelocityChart({ data }: { data: ChannelVphSnapshot[] }) {
-  const chartData = data.map((d) => ({
-    time: d.recordedAt.toDate().toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }),
-    vph: d.vph,
-  }));
+function MultiLineVphChart({ data }: { data: VideoVphChartData }) {
+  const { series, timestamps } = data;
+
+  // Pivot: one row per timestamp, videoId keys hold VPH values
+  const chartData = timestamps.map((time) => {
+    const row: Record<string, string | number> = { time };
+    for (const s of series) {
+      const point = s.data.find((p) => p.time === time);
+      if (point) row[s.videoId] = point.vph;
+    }
+    return row;
+  });
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <div className="mb-4">
-        <p className="text-sm font-semibold text-foreground">Channel Velocity</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Views per hour — last {data.length}h
-        </p>
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Video Velocity</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            VPH per video — top {series.length} most active · last 24h
+          </p>
+        </div>
       </div>
-      <ResponsiveContainer width="100%" height={160}>
-        <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-          <defs>
-            <linearGradient id="velocityGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
-              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.02} />
-            </linearGradient>
-          </defs>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
           <XAxis
             dataKey="time"
             tick={{ fontSize: 10, fill: "#6b7280" }}
@@ -196,21 +201,39 @@ function VelocityChart({ data }: { data: ChannelVphSnapshot[] }) {
               backgroundColor: "var(--card)",
               borderColor: "var(--border)",
               borderRadius: "var(--radius)",
-              fontSize: "12px",
+              fontSize: "11px",
               color: "var(--foreground)",
             }}
-            formatter={(v) => [`${formatNumber(typeof v === "number" ? v : null)}/hr`, "Channel VPH"]}
+            formatter={(v: unknown, key: string | number | undefined) => {
+              const keyStr = String(key ?? "");
+              const video = series.find((s) => s.videoId === keyStr);
+              const title = video?.title ?? keyStr;
+              const label = title.length > 45 ? title.slice(0, 45) + "…" : title;
+              return [`${formatNumber(typeof v === "number" ? v : null)}/hr`, label];
+            }}
           />
-          <Area
-            type="monotone"
-            dataKey="vph"
-            stroke="#8b5cf6"
-            strokeWidth={2}
-            fill="url(#velocityGradient)"
-            dot={false}
-            activeDot={{ r: 4, fill: "#8b5cf6", strokeWidth: 0 }}
+          <Legend
+            iconType="line"
+            wrapperStyle={{ fontSize: "10px", color: "#6b7280", paddingTop: "12px" }}
+            formatter={(value: string) => {
+              const video = series.find((s) => s.videoId === value);
+              const title = video?.title ?? value;
+              return title.length > 35 ? title.slice(0, 35) + "…" : title;
+            }}
           />
-        </AreaChart>
+          {series.map((s, i) => (
+            <Line
+              key={s.videoId}
+              type="monotone"
+              dataKey={s.videoId}
+              stroke={LINE_COLORS[i % LINE_COLORS.length]}
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={{ r: 3, strokeWidth: 0 }}
+              connectNulls
+            />
+          ))}
+        </LineChart>
       </ResponsiveContainer>
     </div>
   );
@@ -407,7 +430,7 @@ export default function Home() {
   const [selectedData, setSelectedData] = useState<ApiResult | null>(null);
   const [loadingSelected, setLoadingSelected] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
-  const [vphHistory, setVphHistory] = useState<ChannelVphSnapshot[]>([]);
+  const [videoVphHistory, setVideoVphHistory] = useState<VideoVphChartData | null>(null);
 
   useEffect(() => {
     getTrackedChannels()
@@ -422,11 +445,11 @@ export default function Home() {
   const fetchChannelData = useCallback(async (channelId: string) => {
     setLoadingSelected(true);
     setSelectedData(null);
-    setVphHistory([]);
+    setVideoVphHistory(null);
     try {
-      const [cached, history] = await Promise.all([
+      const [cached, vphData] = await Promise.all([
         getTrackedChannelData(channelId),
-        getChannelVphHistory(channelId),
+        getVideoVphHistory(channelId),
       ]);
       if (!cached) return;
       const videos: VideoItem[] = cached.videos;
@@ -439,7 +462,7 @@ export default function Home() {
         totalViews: cached.totalViews,
         videos,
       });
-      setVphHistory(history);
+      setVideoVphHistory(vphData);
       setLastSynced(new Date());
     } catch {
       /* silent */
@@ -827,9 +850,9 @@ export default function Home() {
               />
             </div>
 
-            {/* Channel velocity chart */}
-            {vphHistory.length > 0 ? (
-              <VelocityChart data={vphHistory} />
+            {/* Per-video VPH comparison chart */}
+            {videoVphHistory && videoVphHistory.series.length > 0 ? (
+              <MultiLineVphChart data={videoVphHistory} />
             ) : (
               <VelocityChartSkeleton />
             )}

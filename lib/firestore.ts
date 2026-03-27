@@ -11,6 +11,7 @@ import {
   query,
   orderBy,
   limit,
+  where,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -54,6 +55,20 @@ export interface VideoState {
 export interface ChannelVphSnapshot {
   vph: number;
   recordedAt: Timestamp;
+}
+
+/** One video's VPH time-series for the multi-line chart. */
+export interface VideoVphSeries {
+  videoId: string;
+  title: string;
+  data: Array<{ time: string; vph: number }>;
+  latestVph: number;
+}
+
+/** Pivoted chart data for the multi-line VPH comparison chart. */
+export interface VideoVphChartData {
+  series: VideoVphSeries[];  // top N videos sorted by latest VPH desc
+  timestamps: string[];      // all unique HH:mm labels sorted asc (x-axis)
 }
 
 /** Full channel data assembled from Firestore (channel doc + latest snapshots). */
@@ -370,4 +385,76 @@ export async function getChannelVphHistory(
   return snap.docs
     .map((d) => d.data() as ChannelVphSnapshot)
     .reverse(); // chronological order for chart
+}
+
+/**
+ * Query the snapshots sub-collection for per-video VPH over the last
+ * `hourLimit` hours, returning the top `topN` videos by latest VPH.
+ * Returns pivoted data ready for a Recharts LineChart.
+ *
+ * Note: uses where("recordedAt", ">=", ...) + orderBy("recordedAt", "asc").
+ * Single-field indexes are auto-created by Firestore. If a composite index
+ * error appears in the console, click the URL it provides to fix in one click.
+ */
+export async function getVideoVphHistory(
+  channelId: string,
+  hourLimit = 24,
+  topN = 10
+): Promise<VideoVphChartData> {
+  const cutoff = new Date();
+  cutoff.setHours(cutoff.getHours() - hourLimit);
+
+  // Load video titles from the channel doc
+  const channelSnap = await getDoc(doc(db, "tracked_channels", channelId));
+  const channelData = channelSnap.data();
+  const titleMap = new Map<string, string>(
+    (channelData?.videos ?? []).map(
+      (v: { videoId: string; title: string }) => [v.videoId, v.title]
+    )
+  );
+
+  // Query snapshots within the time window
+  const snapshotsRef = collection(db, "tracked_channels", channelId, "snapshots");
+  const q = query(
+    snapshotsRef,
+    where("recordedAt", ">=", Timestamp.fromDate(cutoff)),
+    orderBy("recordedAt", "asc")
+  );
+  const snap = await getDocs(q);
+
+  // Group by videoId → ordered VPH points
+  const byVideo = new Map<string, Array<{ time: string; vph: number }>>();
+  const latestVphMap = new Map<string, number>();
+
+  for (const d of snap.docs) {
+    const data = d.data() as VideoSnapshot;
+    if (data.vph == null) continue;
+    const time = data.recordedAt.toDate().toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    if (!byVideo.has(data.videoId)) byVideo.set(data.videoId, []);
+    byVideo.get(data.videoId)!.push({ time, vph: data.vph });
+    latestVphMap.set(data.videoId, data.vph);
+  }
+
+  // Sort by latest VPH descending, take topN
+  const sorted = [...byVideo.entries()]
+    .sort((a, b) => (latestVphMap.get(b[0]) ?? 0) - (latestVphMap.get(a[0]) ?? 0))
+    .slice(0, topN);
+
+  const series: VideoVphSeries[] = sorted.map(([videoId, data]) => ({
+    videoId,
+    title: titleMap.get(videoId) ?? videoId,
+    data,
+    latestVph: latestVphMap.get(videoId) ?? 0,
+  }));
+
+  // Collect all unique timestamps for x-axis
+  const allTimes = new Set<string>();
+  for (const s of series) s.data.forEach((p) => allTimes.add(p.time));
+  const timestamps = [...allTimes].sort();
+
+  return { series, timestamps };
 }
