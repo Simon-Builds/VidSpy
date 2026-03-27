@@ -548,35 +548,144 @@ export default function Home() {
   // Search View
   // ---------------------------------------------------------------------------
 
-  const SearchView = (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">Search a Channel</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Enter a YouTube channel URL, handle, or ID to fetch recent videos.
+  const SUGGESTED_CHANNELS = ["@MKBHD", "@veritasium", "@LexFridman", "@Fireship"];
+
+  async function handleChipSearch(handle: string) {
+    setInput(handle);
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setTrackState("idle");
+    try {
+      const res = await fetch("/api/youtube", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelInput: handle }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Something went wrong."); return; }
+      setResult({
+        ...data,
+        videos: (data.videos ?? []).map((v: Omit<VideoItem, "engagementRate">) => ({
+          ...v,
+          engagementRate:
+            v.viewCount != null && v.viewCount > 0
+              ? Math.round((((v.likeCount ?? 0) + (v.commentCount ?? 0)) / v.viewCount) * 10000) / 100
+              : null,
+        })),
+      });
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const searchForm = (
+    <form onSubmit={handleSubmit} className="flex gap-2">
+      <Input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Enter a YouTube channel URL, handle, or ID…"
+        disabled={loading}
+        className="flex-1 bg-background border-border text-foreground placeholder:text-muted-foreground"
+      />
+      <Button type="submit" disabled={loading || !input.trim()}>
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+        {loading ? "Fetching…" : "Fetch"}
+      </Button>
+    </form>
+  );
+
+  const SearchView = !result && !loading ? (
+    /* ── Discovery / empty state ── */
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] max-w-2xl mx-auto text-center gap-8">
+
+      {/* Hero icon */}
+      <div className="rounded-2xl bg-primary/10 p-6 ring-1 ring-primary/20">
+        <Activity className="w-20 h-20 text-primary/40" />
+      </div>
+
+      {/* Heading */}
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">Discover a Channel</h2>
+        <p className="text-sm text-muted-foreground">
+          Enter a YouTube channel URL, handle, or ID to analyse recent performance.
         </p>
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-5">
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="@MrBeast  ·  youtube.com/@MrBeast  ·  UC..."
+      {/* Search bar */}
+      <div className="w-full rounded-lg border border-border bg-card p-4">
+        {searchForm}
+      </div>
+
+      {/* Suggested chips */}
+      <div className="flex flex-wrap justify-center gap-2">
+        <span className="text-xs text-muted-foreground/60 w-full mb-1">Try a channel →</span>
+        {SUGGESTED_CHANNELS.map((handle) => (
+          <button
+            key={handle}
+            onClick={() => handleChipSearch(handle)}
             disabled={loading}
-            className="flex-1 bg-background border-border text-foreground placeholder:text-muted-foreground"
-          />
-          <Button type="submit" disabled={loading || !input.trim()}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            {loading ? "Fetching…" : "Fetch"}
-          </Button>
-        </form>
+            className="px-3 py-1.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-primary/20 hover:text-primary border border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {handle}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <p className="w-full rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      {/* Feature cards */}
+      <div className="grid grid-cols-3 gap-3 w-full mt-2">
+        {[
+          {
+            icon: <Zap className="h-4 w-4 text-primary" />,
+            title: "Real-time Velocity",
+            desc: "Views Per Hour computed from live deltas — not lifetime averages.",
+          },
+          {
+            icon: <BarChart2 className="h-4 w-4 text-primary" />,
+            title: "Engagement Ratios",
+            desc: "Likes + comments over views, surfaced per video and averaged across the channel.",
+          },
+          {
+            icon: <TrendingUp className="h-4 w-4 text-primary" />,
+            title: "Smart Polling",
+            desc: "3-phase engine boosts viral videos to hourly tracking automatically.",
+          },
+        ].map(({ icon, title, desc }) => (
+          <div key={title} className="rounded-lg border border-border bg-card p-4 text-left space-y-2">
+            <div className="flex items-center gap-2">
+              {icon}
+              <p className="text-xs font-semibold text-foreground">{title}</p>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : (
+    /* ── Results / loading state ── */
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <div className="rounded-lg border border-border bg-card p-4">
+        {searchForm}
       </div>
 
       {error && (
         <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </p>
+      )}
+
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       )}
 
       {result && (
