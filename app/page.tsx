@@ -11,6 +11,8 @@ import {
   Trash2,
   Eye,
   Users,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -129,6 +131,19 @@ function MomentumBadge({
 
 /** Shared video stats table */
 function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; showMomentum?: boolean }) {
+  const [vphSort, setVphSort] = useState<"asc" | "desc" | null>(null);
+
+  const sortedVideos = vphSort
+    ? [...videos].sort((a, b) => {
+        const aVal = a.vph ?? -1;
+        const bVal = b.vph ?? -1;
+        return vphSort === "desc" ? bVal - aVal : aVal - bVal;
+      })
+    : videos;
+
+  const cycleSort = () =>
+    setVphSort((prev) => (prev === null ? "desc" : prev === "desc" ? "asc" : null));
+
   return (
     <>
       <Table>
@@ -141,10 +156,20 @@ function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; show
             {showMomentum && (
               <>
                 <TableHead
-                  className="w-28 text-right"
-                  title="Views gained per hour (delta between snapshots)"
+                  className="w-28 text-right cursor-pointer select-none hover:text-foreground transition-colors"
+                  title="Views gained per hour (delta between snapshots) — click to sort"
+                  onClick={cycleSort}
                 >
-                  VPH
+                  <span className="inline-flex items-center justify-end gap-1">
+                    VPH
+                    {vphSort === "desc" ? (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    ) : vphSort === "asc" ? (
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 opacity-30" />
+                    )}
+                  </span>
                 </TableHead>
                 <TableHead
                   className="w-44 text-right"
@@ -158,7 +183,7 @@ function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; show
           </TableRow>
         </TableHeader>
         <TableBody>
-          {videos.map((video) => (
+          {sortedVideos.map((video) => (
             <TableRow key={video.videoId}>
               <TableCell className="pl-6">
                 <a
@@ -201,19 +226,21 @@ function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; show
           ))}
         </TableBody>
       </Table>
-      <div className="border-t px-6 py-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-        <span className="font-medium">Momentum</span>
-        <span>= VPH relative to channel&apos;s 30-day avg.</span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800">
-          1.0–1.9x Steady Growth
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-green-700 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800">
-          2.0–2.4x Crushing It
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 border border-orange-200 px-2 py-0.5 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800">
-          🔥 2.5x+ Viral Velocity
-        </span>
-      </div>
+      {showMomentum && (
+        <div className="border-t px-6 py-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <span className="font-medium">Momentum</span>
+          <span>= VPH relative to channel&apos;s 30-day avg.</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800">
+            1.0–1.9x Steady Growth
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-green-700 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800">
+            2.0–2.4x Crushing It
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 border border-orange-200 px-2 py-0.5 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800">
+            🔥 2.5x+ Viral Velocity
+          </span>
+        </div>
+      )}
     </>
   );
 }
@@ -476,26 +503,43 @@ export default function Home() {
               <span className="text-sm font-normal text-muted-foreground">
                 {result.videos.length} videos in last 30 days
               </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={handleTrack}
-                disabled={trackState !== "idle"}
-              >
-                {trackState === "tracking" ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : trackState === "tracked" ? (
-                  <Check className="mr-1.5 h-3.5 w-3.5 text-green-500" />
+              {(() => {
+                const alreadyTracked = trackedChannels.some(
+                  (ch) => ch.channelId === result.channelId
+                );
+                return alreadyTracked ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto opacity-50 cursor-not-allowed"
+                    disabled
+                  >
+                    <Check className="mr-1.5 h-3.5 w-3.5" />
+                    Tracked
+                  </Button>
                 ) : (
-                  <BookmarkPlus className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                {trackState === "tracking"
-                  ? "Tracking…"
-                  : trackState === "tracked"
-                  ? "Tracked"
-                  : "Track Channel"}
-              </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={handleTrack}
+                    disabled={trackState !== "idle"}
+                  >
+                    {trackState === "tracking" ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : trackState === "tracked" ? (
+                      <Check className="mr-1.5 h-3.5 w-3.5 text-green-500" />
+                    ) : (
+                      <BookmarkPlus className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    {trackState === "tracking"
+                      ? "Tracking…"
+                      : trackState === "tracked"
+                      ? "Tracked"
+                      : "Track Channel"}
+                  </Button>
+                );
+              })()}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
