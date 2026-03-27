@@ -33,12 +33,12 @@ import {
 } from "@/components/ui/table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
-  CartesianGrid,
+  LabelList,
   ResponsiveContainer,
 } from "recharts";
 import {
@@ -46,9 +46,7 @@ import {
   removeTrackedChannel,
   getTrackedChannels,
   getTrackedChannelData,
-  getVideoVphHistory,
   type TrackedChannel,
-  type VideoVphChartData,
 } from "@/lib/firestore";
 
 // ---------------------------------------------------------------------------
@@ -134,96 +132,66 @@ function StatCard({
 }
 
 // ---------------------------------------------------------------------------
-// MultiLineVphChart — per-video VPH trend lines (replaces single area chart)
+// VphLeaderboard — vertical bar chart ranked by VPH
 // ---------------------------------------------------------------------------
 
-const LINE_COLORS = [
-  "#a78bfa", "#60a5fa", "#34d399", "#fb923c", "#f472b6",
-  "#c084fc", "#38bdf8", "#4ade80", "#fbbf24", "#f87171",
-];
+function VphLeaderboard({ videos }: { videos: VideoItem[] }) {
+  const chartData = videos
+    .filter((v) => v.vph != null)
+    .sort((a, b) => (b.vph ?? 0) - (a.vph ?? 0))
+    .slice(0, 10)
+    .map((v) => ({
+      title: v.title.length > 32 ? v.title.slice(0, 32) + "…" : v.title,
+      vph: Math.round(v.vph!),
+    }));
 
-function VelocityChartSkeleton() {
+  if (chartData.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-5">
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-foreground">VPH Leaderboard</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Top videos by views per hour</p>
+        </div>
+        <div className="h-[200px] flex items-center justify-center">
+          <p className="text-xs text-muted-foreground/50">
+            No VPH data yet — check back after the next hourly poll
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-border bg-card p-5">
       <div className="mb-4">
-        <p className="text-sm font-semibold text-foreground">Video Velocity</p>
-        <p className="text-xs text-muted-foreground mt-0.5">VPH per video — top 10 most active</p>
-      </div>
-      <div className="h-[220px] flex items-center justify-center">
-        <p className="text-xs text-muted-foreground/50">
-          Collecting data — check back after the next hourly poll
+        <p className="text-sm font-semibold text-foreground">VPH Leaderboard</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Top {chartData.length} videos by views per hour
         </p>
       </div>
-    </div>
-  );
-}
-
-function MultiLineVphChart({ data }: { data: VideoVphChartData }) {
-  const { series, timestamps } = data;
-  const [hoveredVideoId, setHoveredVideoId] = useState<string | null>(null);
-
-  // Pivot: one row per timestamp, videoId keys hold VPH values
-  const chartData = timestamps.map((time) => {
-    const row: Record<string, string | number> = { time };
-    for (const s of series) {
-      const point = s.data.find((p) => p.time === time);
-      if (point) row[s.videoId] = point.vph;
-    }
-    return row;
-  });
-
-  const top5 = series.slice(0, 5);
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold text-foreground">Video Velocity</p>
-          <p className="text-xs text-muted-foreground mt-0.5">VPH per video · last 24h</p>
-        </div>
-        {/* Top-5 legend — top-right, hover to focus line */}
-        <div className="flex flex-col gap-1.5 shrink-0 min-w-0">
-          {top5.map((s, i) => (
-            <div
-              key={s.videoId}
-              className="flex items-center gap-1.5 cursor-default"
-              onMouseEnter={() => setHoveredVideoId(s.videoId)}
-              onMouseLeave={() => setHoveredVideoId(null)}
-            >
-              <span
-                className="inline-block w-4 h-px rounded-full shrink-0"
-                style={{ backgroundColor: LINE_COLORS[i % LINE_COLORS.length] }}
-              />
-              <span className="text-[10px] text-muted-foreground truncate max-w-[150px]">
-                {s.title.length > 30 ? s.title.slice(0, 30) + "…" : s.title}
-              </span>
-              <span
-                className="text-[10px] font-mono tabular-nums ml-auto pl-2 shrink-0"
-                style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}
-              >
-                {formatNumber(Math.round(s.latestVph))}/h
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
+      <ResponsiveContainer width="100%" height={chartData.length * 38 + 16}>
+        <BarChart
+          layout="vertical"
+          data={chartData}
+          margin={{ top: 0, right: 56, left: 0, bottom: 0 }}
+        >
           <XAxis
-            dataKey="time"
-            tick={{ fontSize: 10, fill: "#6b7280" }}
-            tickLine={false}
-            axisLine={false}
-            interval="preserveStartEnd"
-          />
-          <YAxis
+            type="number"
             tick={{ fontSize: 10, fill: "#6b7280" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => formatNumber(v)}
           />
+          <YAxis
+            type="category"
+            dataKey="title"
+            width={170}
+            tick={{ fontSize: 10, fill: "#6b7280" }}
+            tickLine={false}
+            axisLine={false}
+          />
           <Tooltip
+            cursor={{ fill: "oklch(1 0 0 / 4%)" }}
             contentStyle={{
               backgroundColor: "var(--card)",
               borderColor: "var(--border)",
@@ -231,32 +199,17 @@ function MultiLineVphChart({ data }: { data: VideoVphChartData }) {
               fontSize: "11px",
               color: "var(--foreground)",
             }}
-            formatter={(v: unknown, key: string | number | undefined) => {
-              const keyStr = String(key ?? "");
-              const video = series.find((s) => s.videoId === keyStr);
-              const title = video?.title ?? keyStr;
-              const label = title.length > 45 ? title.slice(0, 45) + "…" : title;
-              return [`${formatNumber(typeof v === "number" ? v : null)}/hr`, label];
-            }}
+            formatter={(v: unknown) => [`${formatNumber(typeof v === "number" ? v : null)}/hr`, "VPH"]}
           />
-          {series.map((s, i) => {
-            const isHovered = hoveredVideoId === s.videoId;
-            const isDimmed = hoveredVideoId !== null && !isHovered;
-            return (
-              <Line
-                key={s.videoId}
-                type="basis"
-                dataKey={s.videoId}
-                stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                strokeWidth={isHovered ? 3 : 2}
-                strokeOpacity={isDimmed ? 0.2 : 1}
-                dot={false}
-                activeDot={{ r: 3, strokeWidth: 0 }}
-                connectNulls
-              />
-            );
-          })}
-        </LineChart>
+          <Bar dataKey="vph" fill="#a78bfa" barSize={20} radius={[0, 4, 4, 0]}>
+            <LabelList
+              dataKey="vph"
+              position="right"
+              formatter={(v: unknown) => formatNumber(typeof v === "number" ? v : null)}
+              style={{ fontSize: "10px", fill: "#9ca3af", fontFamily: "monospace" }}
+            />
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );
@@ -453,8 +406,6 @@ export default function Home() {
   const [selectedData, setSelectedData] = useState<ApiResult | null>(null);
   const [loadingSelected, setLoadingSelected] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
-  const [videoVphHistory, setVideoVphHistory] = useState<VideoVphChartData | null>(null);
-
   useEffect(() => {
     getTrackedChannels()
       .then((channels) => {
@@ -468,12 +419,8 @@ export default function Home() {
   const fetchChannelData = useCallback(async (channelId: string) => {
     setLoadingSelected(true);
     setSelectedData(null);
-    setVideoVphHistory(null);
     try {
-      const [cached, vphData] = await Promise.all([
-        getTrackedChannelData(channelId),
-        getVideoVphHistory(channelId),
-      ]);
+      const cached = await getTrackedChannelData(channelId);
       if (!cached) return;
       const videos: VideoItem[] = cached.videos;
       setSelectedData({
@@ -485,7 +432,6 @@ export default function Home() {
         totalViews: cached.totalViews,
         videos,
       });
-      setVideoVphHistory(vphData);
       setLastSynced(new Date());
     } catch {
       /* silent */
@@ -873,12 +819,8 @@ export default function Home() {
               />
             </div>
 
-            {/* Per-video VPH comparison chart */}
-            {videoVphHistory && videoVphHistory.series.length > 0 ? (
-              <MultiLineVphChart data={videoVphHistory} />
-            ) : (
-              <VelocityChartSkeleton />
-            )}
+            {/* VPH Leaderboard */}
+            <VphLeaderboard videos={selectedData.videos} />
 
             {/* Video table */}
             <div className="rounded-lg border border-border bg-card overflow-hidden">
