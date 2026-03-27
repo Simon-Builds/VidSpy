@@ -17,6 +17,7 @@ import {
   BarChart2,
   Zap,
   MoreHorizontal,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -792,20 +793,14 @@ export default function Home() {
       {/* Left sidebar */}
       <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col">
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-5 py-5 border-b border-border">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-7 w-7 text-muted-foreground shrink-0"
-          >
-            {/* Monitoring frame */}
-            <rect x="2" y="8" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.75" />
-            {/* Velocity arrow */}
-            <path d="M10 15 L20 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
-            <path d="M15 4 L20 4 L20 9" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="text-base font-bold tracking-tight text-foreground">VidSpy</span>
+        <div className="flex items-center gap-2 px-5 py-5 border-b border-border">
+          <div className="rounded-md bg-primary/10 p-1.5 ring-1 ring-primary/20 shrink-0">
+            <Activity className="h-4 w-4 text-primary" />
+          </div>
+          <span className="font-mono tracking-tighter drop-shadow-[0_0_10px_rgba(155,110,255,0.2)]">
+            <span className="text-sm font-bold text-foreground">VID</span>
+            <span className="text-sm font-normal text-primary">SPY</span>
+          </span>
         </div>
 
         {/* Nav */}
