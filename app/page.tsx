@@ -38,7 +38,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
+  CartesianGrid,
   ResponsiveContainer,
 } from "recharts";
 import {
@@ -160,6 +160,7 @@ function VelocityChartSkeleton() {
 
 function MultiLineVphChart({ data }: { data: VideoVphChartData }) {
   const { series, timestamps } = data;
+  const [hoveredVideoId, setHoveredVideoId] = useState<string | null>(null);
 
   // Pivot: one row per timestamp, videoId keys hold VPH values
   const chartData = timestamps.map((time) => {
@@ -171,18 +172,44 @@ function MultiLineVphChart({ data }: { data: VideoVphChartData }) {
     return row;
   });
 
+  const top5 = series.slice(0, 5);
+
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <div className="mb-4 flex items-start justify-between">
+      <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-foreground">Video Velocity</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            VPH per video — top {series.length} most active · last 24h
-          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">VPH per video · last 24h</p>
+        </div>
+        {/* Top-5 legend — top-right, hover to focus line */}
+        <div className="flex flex-col gap-1.5 shrink-0 min-w-0">
+          {top5.map((s, i) => (
+            <div
+              key={s.videoId}
+              className="flex items-center gap-1.5 cursor-default"
+              onMouseEnter={() => setHoveredVideoId(s.videoId)}
+              onMouseLeave={() => setHoveredVideoId(null)}
+            >
+              <span
+                className="inline-block w-4 h-px rounded-full shrink-0"
+                style={{ backgroundColor: LINE_COLORS[i % LINE_COLORS.length] }}
+              />
+              <span className="text-[10px] text-muted-foreground truncate max-w-[150px]">
+                {s.title.length > 30 ? s.title.slice(0, 30) + "…" : s.title}
+              </span>
+              <span
+                className="text-[10px] font-mono tabular-nums ml-auto pl-2 shrink-0"
+                style={{ color: LINE_COLORS[i % LINE_COLORS.length] }}
+              >
+                {formatNumber(Math.round(s.latestVph))}/h
+              </span>
+            </div>
+          ))}
         </div>
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
           <XAxis
             dataKey="time"
             tick={{ fontSize: 10, fill: "#6b7280" }}
@@ -212,27 +239,23 @@ function MultiLineVphChart({ data }: { data: VideoVphChartData }) {
               return [`${formatNumber(typeof v === "number" ? v : null)}/hr`, label];
             }}
           />
-          <Legend
-            iconType="line"
-            wrapperStyle={{ fontSize: "10px", color: "#6b7280", paddingTop: "12px" }}
-            formatter={(value: string) => {
-              const video = series.find((s) => s.videoId === value);
-              const title = video?.title ?? value;
-              return title.length > 35 ? title.slice(0, 35) + "…" : title;
-            }}
-          />
-          {series.map((s, i) => (
-            <Line
-              key={s.videoId}
-              type="monotone"
-              dataKey={s.videoId}
-              stroke={LINE_COLORS[i % LINE_COLORS.length]}
-              strokeWidth={1.5}
-              dot={false}
-              activeDot={{ r: 3, strokeWidth: 0 }}
-              connectNulls
-            />
-          ))}
+          {series.map((s, i) => {
+            const isHovered = hoveredVideoId === s.videoId;
+            const isDimmed = hoveredVideoId !== null && !isHovered;
+            return (
+              <Line
+                key={s.videoId}
+                type="basis"
+                dataKey={s.videoId}
+                stroke={LINE_COLORS[i % LINE_COLORS.length]}
+                strokeWidth={isHovered ? 3 : 2}
+                strokeOpacity={isDimmed ? 0.2 : 1}
+                dot={false}
+                activeDot={{ r: 3, strokeWidth: 0 }}
+                connectNulls
+              />
+            );
+          })}
         </LineChart>
       </ResponsiveContainer>
     </div>
