@@ -316,9 +316,25 @@ export async function getTrackedChannelData(
       likeCount: snap?.likeCount ?? null,
       commentCount: snap?.commentCount ?? null,
       vph: snap?.vph ?? null,
-      engagementRate: snap?.engagementRate ?? null,
+      engagementRate:
+        snap?.viewCount != null && snap.viewCount > 0
+          ? Math.round(
+              (((snap.likeCount ?? 0) + (snap.commentCount ?? 0)) /
+                snap.viewCount) *
+                10000
+            ) / 100
+          : (snap?.engagementRate ?? null),
     };
   });
+
+  const erVals = mergedVideos
+    .map((v) => v.engagementRate)
+    .filter((v): v is number => v != null);
+  const computedAvgEr =
+    erVals.length > 0
+      ? Math.round((erVals.reduce((a, b) => a + b, 0) / erVals.length) * 100) /
+        100
+      : null;
 
   return {
     channelId,
@@ -326,7 +342,7 @@ export async function getTrackedChannelData(
     channelThumbnail: data.channelThumbnail ?? "",
     subscriberCount: data.subscriberCount ?? null,
     totalViews: data.totalViews ?? null,
-    avgEngagementRate: data.avgEngagementRate ?? null,
+    avgEngagementRate: data.avgEngagementRate ?? computedAvgEr,
     videos: mergedVideos,
   };
 }

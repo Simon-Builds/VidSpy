@@ -47,11 +47,27 @@ Videos older than 30 days are excluded from all polling. No API calls, no snapsh
 
 ---
 
-## VPH Display
+## Metrics Display
+
+### VPH (Views Per Hour)
 
 In the Tracked Channels view, each video's VPH is shown in the table. VPH numbers appear in **green** when a video is currently above the channel's live average — making breakout content immediately visible at a glance.
 
 The channel's average VPH is displayed as a stat card in the channel header, giving context for interpreting individual video performance.
+
+### Engagement Rate
+
+Every snapshot also stores an **Engagement Rate** — a transparent measure of how well a video is converting views into active audience interaction:
+
+```
+engagementRate = ((likeCount + commentCount) / viewCount) × 100
+```
+
+- Shown as a percentage (e.g. `5.42%`) in the Engagement column
+- Highlighted in **blue** when a video is above the channel's current average
+- The channel average is shown as a sub-label beneath each value (`Avg: 3.2%`)
+- Computed directly from snapshot data — no additional API calls required
+- Null-safe: returns `—` when `viewCount` is zero or unavailable
 
 ---
 
@@ -61,15 +77,17 @@ The channel's average VPH is displayed as a stat card in the channel header, giv
 tracked_channels/{channelId}
   channelTitle, channelThumbnail, uploadsPlaylistId
   subscriberCount, totalViews
+  avgEngagementRate              ← channel average ER, updated each poll
   lastUpdated
-  videos: VideoMeta[]          ← identity + publish metadata
+  videos: VideoMeta[]            ← identity + publish metadata
 
   /snapshots/{timestamp_videoId}
     videoId, viewCount, likeCount, commentCount
-    vph, recordedAt            ← immutable historical record
+    vph, engagementRate          ← immutable historical record
+    recordedAt
 
   /video_states/{videoId}
-    isViralOverride: boolean   ← mutable polling state
+    isViralOverride: boolean     ← mutable polling state
     viralUpgradeAt: Timestamp
 ```
 
