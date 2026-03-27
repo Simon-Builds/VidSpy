@@ -10,6 +10,37 @@ const db = getFirestore();
 const YT_BASE = "https://www.googleapis.com/youtube/v3";
 
 // ---------------------------------------------------------------------------
+// Resilience utilities
+// ---------------------------------------------------------------------------
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Wraps a YouTube API call with exponential backoff + jitter.
+ * Retries on 429 (rate limit) or 5xx (server error) up to maxRetries times.
+ * Non-retryable errors (403, 400, etc.) are returned immediately.
+ */
+async function fetchWithRetry(url: URL, maxRetries = 3): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      // Jitter prevents all channels retrying at the exact same millisecond
+      const backoffMs = (1000 * Math.pow(2, attempt - 1)) + (Math.random() * 100);
+      console.warn(`Retry attempt ${attempt}/${maxRetries} after ${Math.round(backoffMs)}ms…`);
+      await delay(backoffMs);
+    }
+    const res = await fetch(url.toString());
+    if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
+      if (attempt === maxRetries) {
+        throw new Error(`API failed after ${maxRetries} retries: HTTP ${res.status}`);
+      }
+      continue; // retryable
+    }
+    return res; // success or non-retryable error
+  }
+  throw new Error("fetchWithRetry: exhausted"); // unreachable
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -127,7 +158,7 @@ async function fetchChannelStats(
   url.searchParams.set("part", "statistics");
   url.searchParams.set("id", channelId);
   url.searchParams.set("key", apiKey);
-  const res = await fetch(url.toString());
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error(`channels.list failed (${res.status})`);
   const data = await res.json() as {
     items?: { statistics: Record<string, string> }[];
@@ -156,7 +187,7 @@ async function fetchRecentVideos(
   url.searchParams.set("maxResults", "50");
   url.searchParams.set("key", apiKey);
 
-  const res = await fetch(url.toString());
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error(`playlistItems.list failed (${res.status})`);
 
   const data = await res.json() as {
@@ -192,31 +223,45 @@ async function fetchVideoStatsBatch(
 ): Promise<Record<string, VideoStats>> {
   const statsMap: Record<string, VideoStats> = {};
 
+  const chunks: string[][] = [];
   for (let i = 0; i < videoIds.length; i += 50) {
-    const batchIds = videoIds.slice(i, i + 50);
-    const url = new URL(`${YT_BASE}/videos`);
-    url.searchParams.set("part", "statistics");
-    url.searchParams.set("id", batchIds.join(","));
-    url.searchParams.set("key", apiKey);
+    chunks.push(videoIds.slice(i, i + 50));
+  }
 
-    const res = await fetch(url.toString());
-    if (!res.ok) throw new Error(`videos.list failed (${res.status})`);
+  for (let i = 0; i < chunks.length; i++) {
+    if (i > 0) await delay(200); // stagger to avoid thundering-herd concurrent limits
 
-    const data = await res.json() as {
-      items?: { id: string; statistics: Record<string, string> }[];
-    };
+    try {
+      const url = new URL(`${YT_BASE}/videos`);
+      url.searchParams.set("part", "statistics");
+      url.searchParams.set("id", chunks[i].join(","));
+      url.searchParams.set("key", apiKey);
 
-    for (const item of data.items ?? []) {
-      const s = item.statistics;
-      statsMap[item.id] = {
-        viewCount: s.viewCount != null ? Number(s.viewCount) : null,
-        likeCount: s.likeCount != null ? Number(s.likeCount) : null,
-        commentCount: s.commentCount != null ? Number(s.commentCount) : null,
+      const res = await fetchWithRetry(url);
+      if (!res.ok) {
+        console.warn(`videos.list batch ${i + 1}/${chunks.length} returned ${res.status}, skipping`);
+        continue; // skip failed batch, merge what we have
+      }
+
+      const data = await res.json() as {
+        items?: { id: string; statistics: Record<string, string> }[];
       };
+
+      for (const item of data.items ?? []) {
+        const s = item.statistics;
+        statsMap[item.id] = {
+          viewCount: s.viewCount != null ? Number(s.viewCount) : null,
+          likeCount: s.likeCount != null ? Number(s.likeCount) : null,
+          commentCount: s.commentCount != null ? Number(s.commentCount) : null,
+        };
+      }
+    } catch (err) {
+      console.error(`videos.list batch ${i + 1}/${chunks.length} threw:`, err);
+      // continue — remaining batches still merge into statsMap
     }
   }
 
-  return statsMap;
+  return statsMap; // partial result is valid — VPH computed from whatever we have
 }
 
 /**
@@ -282,7 +327,7 @@ export const pollTrackedChannels = onSchedule(
     const nowMs = now.getTime();
     const isoKey = now.toISOString().replace(/\.\d{3}Z$/, "Z");
 
-    for (const channelDoc of channelsSnap.docs) {
+    const channelPolls = channelsSnap.docs.map(async (channelDoc) => {
       const channelId = channelDoc.id;
       const { uploadsPlaylistId } = channelDoc.data() as ChannelDoc;
 
@@ -332,7 +377,7 @@ export const pollTrackedChannels = onSchedule(
 
         if (videosToProcess.length === 0) {
           console.log(`Channel ${channelId}: no videos to poll this run.`);
-          continue;
+          return; // early-exit this channel's async fn (was continue in for...of)
         }
 
         // 5. Batch-fetch current stats from YouTube
@@ -507,7 +552,14 @@ export const pollTrackedChannels = onSchedule(
         );
       } catch (err) {
         console.error(`Error polling channel ${channelId}:`, err);
+        // swallowed — other channels continue unaffected
       }
-    }
+    });
+
+    const results = await Promise.allSettled(channelPolls);
+    const failed = results.filter((r) => r.status === "rejected").length;
+    console.log(
+      `Poll run complete: ${results.length - failed}/${results.length} channels succeeded.`
+    );
   }
 );
