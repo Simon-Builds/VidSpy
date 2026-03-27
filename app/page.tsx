@@ -159,7 +159,7 @@ function SingleVideoPulse({
         <div className="h-[220px] flex items-center justify-center">
           <p className="text-xs text-muted-foreground/50">Loading…</p>
         </div>
-      ) : history.length < 2 ? (
+      ) : history.length === 0 ? (
         <div className="h-[220px] flex items-center justify-center">
           <p className="text-xs text-muted-foreground/50">
             Not enough data yet — check back after the next hourly poll

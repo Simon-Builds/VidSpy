@@ -398,15 +398,16 @@ export async function getVideoHistory(
       const ts: Timestamp = data.recordedAt;
       const date = ts.toDate();
       return {
-        vph: data.vph ?? 0,
+        vph: data.vph as number | null,
         time: date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         recordedAt: ts.seconds,
       };
     })
-    .sort((a, b) => a.recordedAt - b.recordedAt);
+    .filter((p) => p.vph != null)   // exclude baseline + any null-delta snapshots
+    .sort((a, b) => a.recordedAt - b.recordedAt)
+    .map((p) => ({ vph: p.vph as number, time: p.time, recordedAt: p.recordedAt }));
 
-  // Drop first snapshot — baseline has null/0 VPH (no prior delta)
-  return points.slice(1);
+  return points;
 }
 
 /**
