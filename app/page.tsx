@@ -33,12 +33,12 @@ import {
 } from "@/components/ui/table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
-  LabelList,
+  CartesianGrid,
   ResponsiveContainer,
 } from "recharts";
 import {
@@ -46,7 +46,9 @@ import {
   removeTrackedChannel,
   getTrackedChannels,
   getTrackedChannelData,
+  getVideoHistory,
   type TrackedChannel,
+  type VideoHistoryPoint,
 } from "@/lib/firestore";
 
 // ---------------------------------------------------------------------------
@@ -132,85 +134,85 @@ function StatCard({
 }
 
 // ---------------------------------------------------------------------------
-// VphLeaderboard — vertical bar chart ranked by VPH
+// SingleVideoPulse — area chart showing VPH over time for one video
 // ---------------------------------------------------------------------------
 
-function VphLeaderboard({ videos }: { videos: VideoItem[] }) {
-  const chartData = videos
-    .filter((v) => v.vph != null)
-    .sort((a, b) => (b.vph ?? 0) - (a.vph ?? 0))
-    .slice(0, 10)
-    .map((v) => ({
-      title: v.title.length > 32 ? v.title.slice(0, 32) + "…" : v.title,
-      vph: Math.round(v.vph!),
-    }));
-
-  if (chartData.length === 0) {
-    return (
-      <div className="rounded-lg border border-border bg-card p-5">
-        <div className="mb-4">
-          <p className="text-sm font-semibold text-foreground">VPH Leaderboard</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Top videos by views per hour</p>
-        </div>
-        <div className="h-[200px] flex items-center justify-center">
-          <p className="text-xs text-muted-foreground/50">
-            No VPH data yet — check back after the next hourly poll
-          </p>
-        </div>
-      </div>
-    );
-  }
-
+function SingleVideoPulse({
+  history,
+  loading,
+  videoTitle,
+}: {
+  history: VideoHistoryPoint[];
+  loading: boolean;
+  videoTitle: string | null;
+}) {
   return (
     <div className="rounded-lg border border-border bg-card p-5">
       <div className="mb-4">
-        <p className="text-sm font-semibold text-foreground">VPH Leaderboard</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Top {chartData.length} videos by views per hour
+        <p className="text-sm font-semibold text-foreground">Video Pulse</p>
+        <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[480px]">
+          {videoTitle ?? "Select a video below"}
         </p>
       </div>
-      <ResponsiveContainer width="100%" height={chartData.length * 38 + 16}>
-        <BarChart
-          layout="vertical"
-          data={chartData}
-          margin={{ top: 0, right: 56, left: 0, bottom: 0 }}
-        >
-          <XAxis
-            type="number"
-            tick={{ fontSize: 10, fill: "#6b7280" }}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v: number) => formatNumber(v)}
-          />
-          <YAxis
-            type="category"
-            dataKey="title"
-            width={170}
-            tick={{ fontSize: 10, fill: "#6b7280" }}
-            tickLine={false}
-            axisLine={false}
-          />
-          <Tooltip
-            cursor={{ fill: "oklch(1 0 0 / 4%)" }}
-            contentStyle={{
-              backgroundColor: "var(--card)",
-              borderColor: "var(--border)",
-              borderRadius: "var(--radius)",
-              fontSize: "11px",
-              color: "var(--foreground)",
-            }}
-            formatter={(v: unknown) => [`${formatNumber(typeof v === "number" ? v : null)}/hr`, "VPH"]}
-          />
-          <Bar dataKey="vph" fill="#a78bfa" barSize={20} radius={[0, 4, 4, 0]}>
-            <LabelList
-              dataKey="vph"
-              position="right"
-              formatter={(v: unknown) => formatNumber(typeof v === "number" ? v : null)}
-              style={{ fontSize: "10px", fill: "#9ca3af", fontFamily: "monospace" }}
+
+      {loading ? (
+        <div className="h-[220px] flex items-center justify-center">
+          <p className="text-xs text-muted-foreground/50">Loading…</p>
+        </div>
+      ) : history.length < 2 ? (
+        <div className="h-[220px] flex items-center justify-center">
+          <p className="text-xs text-muted-foreground/50">
+            Not enough data yet — check back after the next hourly poll
+          </p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={history} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="pulseGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+            <XAxis
+              dataKey="time"
+              tick={{ fontSize: 10, fill: "#6b7280" }}
+              tickLine={false}
+              axisLine={false}
+              interval="preserveStartEnd"
             />
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+            <YAxis
+              tick={{ fontSize: 10, fill: "#6b7280" }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v: number) => formatNumber(v)}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "var(--card)",
+                borderColor: "var(--border)",
+                borderRadius: "var(--radius)",
+                fontSize: "11px",
+                color: "var(--foreground)",
+              }}
+              formatter={(v: unknown) => [
+                `${formatNumber(typeof v === "number" ? v : null)}/hr`,
+                "VPH",
+              ]}
+            />
+            <Area
+              type="monotone"
+              dataKey="vph"
+              stroke="var(--primary)"
+              strokeWidth={2}
+              fill="url(#pulseGradient)"
+              dot={false}
+              activeDot={{ r: 3, strokeWidth: 0, fill: "var(--primary)" }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }
@@ -221,7 +223,17 @@ function VphLeaderboard({ videos }: { videos: VideoItem[] }) {
 
 type SortKey = "viewCount" | "likeCount" | "commentCount" | "vph" | "engagementRate" | "publishedAt";
 
-function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?: boolean }) {
+function VideoTable({
+  videos,
+  showVph = true,
+  selectedVideoId,
+  onVideoSelect,
+}: {
+  videos: VideoItem[];
+  showVph?: boolean;
+  selectedVideoId?: string | null;
+  onVideoSelect?: (videoId: string) => void;
+}) {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
 
   const vphValues = videos.map((v) => v.vph).filter((v): v is number => v != null);
@@ -302,7 +314,14 @@ function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?:
           return (
             <TableRow
               key={video.videoId}
-              className="border-b border-border/50 hover:bg-white/[0.03] transition-colors"
+              onClick={() => onVideoSelect?.(video.videoId)}
+              className={`border-b border-border/50 transition-colors ${
+                onVideoSelect ? "cursor-pointer" : ""
+              } ${
+                selectedVideoId === video.videoId
+                  ? "bg-primary/10 hover:bg-primary/10"
+                  : "hover:bg-white/[0.03]"
+              }`}
             >
               <TableCell className="pl-6 py-4">
                 <div className="flex items-center gap-4">
@@ -406,6 +425,11 @@ export default function Home() {
   const [selectedData, setSelectedData] = useState<ApiResult | null>(null);
   const [loadingSelected, setLoadingSelected] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
+
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
+  const [videoHistory, setVideoHistory] = useState<VideoHistoryPoint[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   useEffect(() => {
     getTrackedChannels()
       .then((channels) => {
@@ -416,9 +440,29 @@ export default function Home() {
       .finally(() => setLoadingTracked(false));
   }, []);
 
+  const fetchVideoHistory = useCallback(async (channelId: string, videoId: string) => {
+    setLoadingHistory(true);
+    try {
+      const history = await getVideoHistory(channelId, videoId);
+      setVideoHistory(history);
+    } catch {
+      setVideoHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  const handleVideoSelect = useCallback((videoId: string) => {
+    if (!selectedChannelId) return;
+    setSelectedVideoId(videoId);
+    fetchVideoHistory(selectedChannelId, videoId);
+  }, [selectedChannelId, fetchVideoHistory]);
+
   const fetchChannelData = useCallback(async (channelId: string) => {
     setLoadingSelected(true);
     setSelectedData(null);
+    setSelectedVideoId(null);
+    setVideoHistory([]);
     try {
       const cached = await getTrackedChannelData(channelId);
       if (!cached) return;
@@ -433,12 +477,20 @@ export default function Home() {
         videos,
       });
       setLastSynced(new Date());
+      // Auto-select the top-VPH video
+      const topVideo = videos
+        .filter((v) => v.vph != null)
+        .sort((a, b) => (b.vph ?? 0) - (a.vph ?? 0))[0];
+      if (topVideo) {
+        setSelectedVideoId(topVideo.videoId);
+        fetchVideoHistory(channelId, topVideo.videoId);
+      }
     } catch {
       /* silent */
     } finally {
       setLoadingSelected(false);
     }
-  }, []);
+  }, [fetchVideoHistory]);
 
   useEffect(() => {
     if (selectedChannelId) fetchChannelData(selectedChannelId);
@@ -819,12 +871,24 @@ export default function Home() {
               />
             </div>
 
-            {/* VPH Leaderboard */}
-            <VphLeaderboard videos={selectedData.videos} />
+            {/* Single Video Pulse */}
+            <SingleVideoPulse
+              history={videoHistory}
+              loading={loadingHistory}
+              videoTitle={
+                selectedVideoId
+                  ? (selectedData.videos.find((v) => v.videoId === selectedVideoId)?.title ?? null)
+                  : null
+              }
+            />
 
             {/* Video table */}
             <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <VideoTable videos={selectedData.videos} />
+              <VideoTable
+                videos={selectedData.videos}
+                selectedVideoId={selectedVideoId}
+                onVideoSelect={handleVideoSelect}
+              />
             </div>
 
             {/* VPH legend */}

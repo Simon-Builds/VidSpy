@@ -371,6 +371,44 @@ export async function getTrackedChannelData(
   };
 }
 
+/** One data point for the Single Video Pulse area chart. */
+export interface VideoHistoryPoint {
+  vph: number;
+  time: string;       // "HH:mm" label for XAxis
+  recordedAt: number; // unix seconds, used for in-memory sort
+}
+
+/**
+ * Return all VPH snapshots for a specific video, sorted chronologically.
+ * The first snapshot is dropped because it has no valid delta (VPH is
+ * always null on the baseline snapshot). Uses an equality filter on videoId
+ * only — no composite index required; sort is done client-side.
+ */
+export async function getVideoHistory(
+  channelId: string,
+  videoId: string
+): Promise<VideoHistoryPoint[]> {
+  const snapshotsRef = collection(db, "tracked_channels", channelId, "snapshots");
+  const q = query(snapshotsRef, where("videoId", "==", videoId));
+  const snap = await getDocs(q);
+
+  const points = snap.docs
+    .map((d) => {
+      const data = d.data();
+      const ts: Timestamp = data.recordedAt;
+      const date = ts.toDate();
+      return {
+        vph: data.vph ?? 0,
+        time: date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        recordedAt: ts.seconds,
+      };
+    })
+    .sort((a, b) => a.recordedAt - b.recordedAt);
+
+  // Drop first snapshot — baseline has null/0 VPH (no prior delta)
+  return points.slice(1);
+}
+
 /**
  * Return the last N channel-level VPH snapshots from vph_history,
  * ordered chronologically (oldest first — ready for charting).
