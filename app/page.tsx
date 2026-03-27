@@ -18,6 +18,7 @@ import {
   Zap,
   MoreHorizontal,
   Activity,
+  Swords,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +76,7 @@ interface ApiResult {
   videos: VideoItem[];
 }
 
-type NavItem = "search" | "tracked";
+type NavItem = "search" | "tracked" | "competitor";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -540,8 +541,9 @@ export default function Home() {
   }
 
   const navItems: { id: NavItem; label: string; icon: React.ReactNode }[] = [
-    { id: "tracked", label: "Tracked Channels", icon: <Radio className="h-4 w-4" /> },
-    { id: "search",  label: "Search",           icon: <Search className="h-4 w-4" /> },
+    { id: "tracked",    label: "Tracked Channels",    icon: <Radio className="h-4 w-4" /> },
+    { id: "search",     label: "Search",              icon: <Search className="h-4 w-4" /> },
+    { id: "competitor", label: "Competitor Analysis", icon: <Swords className="h-4 w-4" /> },
   ];
 
   // ---------------------------------------------------------------------------
@@ -901,6 +903,20 @@ export default function Home() {
   );
 
   // ---------------------------------------------------------------------------
+  // Competitor Analysis View
+  // ---------------------------------------------------------------------------
+
+  const CompetitorView = (
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] text-center gap-4">
+      <div className="rounded-2xl bg-primary/10 p-5 ring-1 ring-primary/20">
+        <Swords className="w-10 h-10 text-primary/60" />
+      </div>
+      <h2 className="text-2xl font-bold tracking-tight text-foreground">Competitor Analysis</h2>
+      <p className="text-sm text-muted-foreground">Coming soon.</p>
+    </div>
+  );
+
+  // ---------------------------------------------------------------------------
   // Layout
   // ---------------------------------------------------------------------------
 
@@ -954,7 +970,7 @@ export default function Home() {
 
       {/* Main content */}
       <main className="flex-1 px-8 py-8 overflow-auto bg-background">
-        {activeNav === "search" ? SearchView : TrackedView}
+        {activeNav === "search" ? SearchView : activeNav === "competitor" ? CompetitorView : TrackedView}
       </main>
     </div>
   );
