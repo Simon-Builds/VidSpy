@@ -13,6 +13,9 @@ import {
   Users,
   ChevronUp,
   ChevronDown,
+  TrendingUp,
+  Clock,
+  BarChart2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +28,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   trackChannelWithData,
   removeTrackedChannel,
@@ -47,7 +52,7 @@ interface VideoItem {
   commentCount: number | null;
   vph: number | null;
   momentumScore: number | null;
-  momentumLabel: "Steady Growth" | "Crushing It" | "Viral Velocity" | null;
+  momentumLabel: MomentumLabel;
 }
 
 interface ApiResult {
@@ -61,6 +66,12 @@ interface ApiResult {
 }
 
 type NavItem = "search" | "tracked";
+type MomentumLabel =
+  | "Underperforming"
+  | "Steady Growth"
+  | "Crushing It"
+  | "Viral Velocity"
+  | null;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -81,57 +92,87 @@ function formatDate(iso: string) {
   });
 }
 
-function getMomentumLabel(
-  score: number | null
-): "Steady Growth" | "Crushing It" | "Viral Velocity" | null {
+function formatTime(d: Date) {
+  return d.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getMomentumLabel(score: number | null): MomentumLabel {
   if (score == null) return null;
   if (score >= 2.5) return "Viral Velocity";
   if (score >= 2.0) return "Crushing It";
   if (score >= 1.0) return "Steady Growth";
-  return null;
+  return "Underperforming";
 }
+
+// ---------------------------------------------------------------------------
+// MomentumBadge — uses Shadcn Badge with tier-appropriate styling
+// ---------------------------------------------------------------------------
 
 function MomentumBadge({
   label,
   score,
 }: {
-  label: "Steady Growth" | "Crushing It" | "Viral Velocity" | null;
+  label: MomentumLabel;
   score: number | null;
 }) {
-  if (!label) return <span className="text-muted-foreground">—</span>;
+  if (!label) return <span className="text-muted-foreground text-sm">—</span>;
 
-  const config = {
-    "Steady Growth": {
-      styles:
-        "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
-    },
-    "Crushing It": {
-      styles:
-        "bg-green-50 text-green-700 border border-green-200 animate-pulse dark:bg-green-950/40 dark:text-green-300 dark:border-green-800",
-    },
-    "Viral Velocity": {
-      styles:
-        "bg-orange-50 text-orange-700 border border-orange-200 animate-pulse dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800",
-    },
-  };
-
-  const { styles } = config[label];
   const scoreText = score != null ? ` ${score.toFixed(1)}x` : "";
 
+  if (label === "Viral Velocity") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 animate-pulse dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800">
+        ⚡ Viral Velocity<span className="opacity-60">{scoreText}</span>
+      </span>
+    );
+  }
+
+  if (label === "Crushing It") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 animate-pulse dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+        Crushing It<span className="opacity-60">{scoreText}</span>
+      </span>
+    );
+  }
+
+  if (label === "Steady Growth") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800">
+        Steady Growth<span className="opacity-60">{scoreText}</span>
+      </span>
+    );
+  }
+
+  // Underperforming
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${styles}`}
-    >
-      {label === "Viral Velocity" && "🔥 "}
-      {label}
-      <span className="opacity-60">{scoreText}</span>
+    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-zinc-100 text-zinc-500 border border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700">
+      Underperforming<span className="opacity-60">{scoreText}</span>
     </span>
   );
 }
 
-/** Shared video stats table */
-function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; showMomentum?: boolean }) {
+// ---------------------------------------------------------------------------
+// VideoTable — shared table component
+// ---------------------------------------------------------------------------
+
+function VideoTable({
+  videos,
+  showMomentum = true,
+}: {
+  videos: VideoItem[];
+  showMomentum?: boolean;
+}) {
   const [vphSort, setVphSort] = useState<"asc" | "desc" | null>(null);
+
+  // Compute channel avg VPH for the up-arrow indicator
+  const vphValues = videos.map((v) => v.vph).filter((v): v is number => v != null);
+  const avgVph =
+    vphValues.length > 0
+      ? vphValues.reduce((sum, v) => sum + v, 0) / vphValues.length
+      : null;
 
   const sortedVideos = vphSort
     ? [...videos].sort((a, b) => {
@@ -142,76 +183,118 @@ function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; show
     : videos;
 
   const cycleSort = () =>
-    setVphSort((prev) => (prev === null ? "desc" : prev === "desc" ? "asc" : null));
+    setVphSort((prev) =>
+      prev === null ? "desc" : prev === "desc" ? "asc" : null
+    );
 
   return (
-    <>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="pl-6">Video Title</TableHead>
-            <TableHead className="w-28 text-right">Views</TableHead>
-            <TableHead className="w-24 text-right">Likes</TableHead>
-            <TableHead className="w-28 text-right">Comments</TableHead>
-            {showMomentum && (
-              <>
-                <TableHead
-                  className="w-28 text-right cursor-pointer select-none hover:text-foreground transition-colors"
-                  title="Views gained per hour (delta between snapshots) — click to sort"
-                  onClick={cycleSort}
-                >
-                  <span className="inline-flex items-center justify-end gap-1">
-                    VPH
-                    {vphSort === "desc" ? (
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    ) : vphSort === "asc" ? (
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronDown className="h-3.5 w-3.5 opacity-30" />
-                    )}
-                  </span>
-                </TableHead>
-                <TableHead
-                  className="w-44 text-right"
-                  title="Relative to channel's 30-day avg VPH. 1.0x = average, 2.0x+ = outperforming"
-                >
-                  Momentum
-                </TableHead>
-              </>
-            )}
-            <TableHead className="w-36 pr-6 text-right">Published</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedVideos.map((video) => (
-            <TableRow key={video.videoId}>
-              <TableCell className="pl-6">
-                <a
-                  href={`https://www.youtube.com/watch?v=${video.videoId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:underline"
-                >
-                  {video.title}
-                </a>
+    <Table>
+      <TableHeader>
+        <TableRow className="border-b bg-muted/30 hover:bg-muted/30">
+          <TableHead className="pl-6 font-semibold text-foreground">
+            Video
+          </TableHead>
+          <TableHead className="w-28 text-right font-semibold text-foreground">
+            Views
+          </TableHead>
+          <TableHead className="w-24 text-right font-semibold text-foreground">
+            Likes
+          </TableHead>
+          <TableHead className="w-28 text-right font-semibold text-foreground">
+            Comments
+          </TableHead>
+          {showMomentum && (
+            <>
+              <TableHead
+                className="w-36 text-right font-semibold text-foreground cursor-pointer select-none hover:text-primary transition-colors"
+                title="Views gained per hour (delta between snapshots) — click to sort"
+                onClick={cycleSort}
+              >
+                <span className="inline-flex items-center justify-end gap-1">
+                  VPH
+                  {vphSort === "desc" ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : vphSort === "asc" ? (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <span className="flex flex-col opacity-30">
+                      <ChevronUp className="h-2.5 w-2.5 -mb-1" />
+                      <ChevronDown className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                </span>
+              </TableHead>
+              <TableHead
+                className="w-44 text-right font-semibold text-foreground"
+                title="Relative to channel's 30-day avg VPH"
+              >
+                Momentum
+              </TableHead>
+            </>
+          )}
+          <TableHead className="w-36 pr-6 text-right font-semibold text-foreground">
+            Published
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sortedVideos.map((video) => {
+          const isAboveAvg =
+            avgVph != null && video.vph != null && video.vph > avgVph;
+
+          return (
+            <TableRow
+              key={video.videoId}
+              className="hover:bg-muted/50 transition-colors"
+            >
+              <TableCell className="pl-6 py-3">
+                <div className="flex items-center gap-3">
+                  {video.thumbnail && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={video.thumbnail}
+                      alt=""
+                      className="h-10 w-[72px] rounded object-cover shrink-0 hidden sm:block"
+                    />
+                  )}
+                  <a
+                    href={`https://www.youtube.com/watch?v=${video.videoId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium hover:text-primary hover:underline line-clamp-2 leading-snug"
+                  >
+                    {video.title}
+                  </a>
+                </div>
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">
-                {formatNumber(video.viewCount)}
+              <TableCell className="text-right">
+                <span className="font-semibold tabular-nums">
+                  {formatNumber(video.viewCount)}
+                </span>
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">
+              <TableCell className="text-right text-muted-foreground text-sm tabular-nums">
                 {formatNumber(video.likeCount)}
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">
+              <TableCell className="text-right text-muted-foreground text-sm tabular-nums">
                 {formatNumber(video.commentCount)}
               </TableCell>
               {showMomentum && (
                 <>
-                  <TableCell className="text-right text-muted-foreground">
-                    {video.vph != null
-                      ? `${formatNumber(Math.round(video.vph))}/hr`
-                      : "—"}
-                  </TableCell>
                   <TableCell className="text-right">
+                    {video.vph != null ? (
+                      <span className="inline-flex items-center justify-end gap-1">
+                        <span className="font-bold tabular-nums">
+                          {formatNumber(Math.round(video.vph))}/hr
+                        </span>
+                        {isAboveAvg && (
+                          <TrendingUp className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right pr-2">
                     <MomentumBadge
                       label={video.momentumLabel}
                       score={video.momentumScore}
@@ -219,29 +302,38 @@ function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; show
                   </TableCell>
                 </>
               )}
-              <TableCell className="pr-6 text-right text-muted-foreground">
+              <TableCell className="pr-6 text-right text-muted-foreground text-sm">
                 {formatDate(video.publishedAt)}
               </TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {showMomentum && (
-        <div className="border-t px-6 py-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-          <span className="font-medium">Momentum</span>
-          <span>= VPH relative to channel&apos;s 30-day avg.</span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800">
-            1.0–1.9x Steady Growth
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-green-700 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800">
-            2.0–2.4x Crushing It
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 border border-orange-200 px-2 py-0.5 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800">
-            🔥 2.5x+ Viral Velocity
-          </span>
-        </div>
-      )}
-    </>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StatPill — small stat chip used in channel header
+// ---------------------------------------------------------------------------
+
+function StatPill({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-sm">
+      <span className="text-muted-foreground">{icon}</span>
+      <div>
+        <p className="text-xs text-muted-foreground leading-none mb-0.5">{label}</p>
+        <p className="text-sm font-semibold leading-none">{value}</p>
+      </div>
+    </div>
   );
 }
 
@@ -257,9 +349,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ApiResult | null>(null);
-  const [trackState, setTrackState] = useState<
-    "idle" | "tracking" | "tracked"
-  >("idle");
+  const [trackState, setTrackState] = useState<"idle" | "tracking" | "tracked">(
+    "idle"
+  );
 
   // Tracked channels state
   const [trackedChannels, setTrackedChannels] = useState<TrackedChannel[]>([]);
@@ -267,17 +359,15 @@ export default function Home() {
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Selected tracked channel state
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(
-    null
-  );
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [selectedData, setSelectedData] = useState<ApiResult | null>(null);
   const [loadingSelected, setLoadingSelected] = useState(false);
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
 
   useEffect(() => {
     getTrackedChannels()
       .then((channels) => {
         setTrackedChannels(channels);
-        // Auto-select the first channel
         if (channels.length > 0) {
           setSelectedChannelId(channels[0].channelId);
         }
@@ -286,37 +376,34 @@ export default function Home() {
       .finally(() => setLoadingTracked(false));
   }, []);
 
-  // Fetch video data from Firestore cache when a tracked channel is selected
-  const fetchChannelData = useCallback(
-    async (channelId: string) => {
-      setLoadingSelected(true);
-      setSelectedData(null);
-      try {
-        const cached = await getTrackedChannelData(channelId);
-        if (!cached) return;
+  const fetchChannelData = useCallback(async (channelId: string) => {
+    setLoadingSelected(true);
+    setSelectedData(null);
+    try {
+      const cached = await getTrackedChannelData(channelId);
+      if (!cached) return;
 
-        const videos: VideoItem[] = cached.videos.map((v) => ({
-          ...v,
-          momentumLabel: getMomentumLabel(v.momentumScore),
-        }));
+      const videos: VideoItem[] = cached.videos.map((v) => ({
+        ...v,
+        momentumLabel: getMomentumLabel(v.momentumScore),
+      }));
 
-        setSelectedData({
-          channelId: cached.channelId,
-          channelTitle: cached.channelTitle,
-          channelThumbnail: cached.channelThumbnail,
-          uploadsPlaylistId: "",
-          subscriberCount: cached.subscriberCount,
-          totalViews: cached.totalViews,
-          videos,
-        });
-      } catch {
-        // Silently fail — user can re-click
-      } finally {
-        setLoadingSelected(false);
-      }
-    },
-    []
-  );
+      setSelectedData({
+        channelId: cached.channelId,
+        channelTitle: cached.channelTitle,
+        channelThumbnail: cached.channelThumbnail,
+        uploadsPlaylistId: "",
+        subscriberCount: cached.subscriberCount,
+        totalViews: cached.totalViews,
+        videos,
+      });
+      setLastSynced(new Date());
+    } catch {
+      // Silently fail — user can re-click
+    } finally {
+      setLoadingSelected(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (selectedChannelId) {
@@ -394,7 +481,6 @@ export default function Home() {
       setTrackState("tracked");
       const updated = await getTrackedChannels();
       setTrackedChannels(updated);
-      // Auto-select the newly tracked channel
       setSelectedChannelId(result.channelId);
     } catch (err) {
       console.error("Failed to track channel:", err);
@@ -406,12 +492,9 @@ export default function Home() {
     setRemovingId(channelId);
     try {
       await removeTrackedChannel(channelId);
-      const updated = trackedChannels.filter(
-        (c) => c.channelId !== channelId
-      );
+      const updated = trackedChannels.filter((c) => c.channelId !== channelId);
       setTrackedChannels(updated);
 
-      // If we removed the selected channel, select the next one
       if (selectedChannelId === channelId) {
         if (updated.length > 0) {
           setSelectedChannelId(updated[0].channelId);
@@ -428,7 +511,7 @@ export default function Home() {
   }
 
   // ---------------------------------------------------------------------------
-  // Sidebar nav items
+  // Nav items
   // ---------------------------------------------------------------------------
 
   const navItems: { id: NavItem; label: string; icon: React.ReactNode }[] = [
@@ -445,27 +528,25 @@ export default function Home() {
   ];
 
   // ---------------------------------------------------------------------------
-  // Views
+  // Search View
   // ---------------------------------------------------------------------------
 
   const SearchView = (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl mx-auto">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">
-          Search a Channel
-        </h2>
+        <h2 className="text-2xl font-bold tracking-tight">Search a Channel</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Enter a YouTube channel URL, handle, or ID to fetch recent videos.
         </p>
       </div>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="@MrBeast  or  https://youtube.com/@MrBeast  or  UC..."
+              placeholder="@MrBeast  ·  youtube.com/@MrBeast  ·  UC..."
               disabled={loading}
               className="flex-1"
             />
@@ -482,27 +563,30 @@ export default function Home() {
       </Card>
 
       {error && (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </p>
       )}
 
       {result && (
-        <Card>
-          <CardHeader>
+        <Card className="shadow-sm overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
             <CardTitle className="flex items-center gap-3">
-              {result.channelThumbnail && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+              <Avatar className="h-10 w-10 border">
+                <AvatarImage
                   src={result.channelThumbnail}
                   alt={result.channelTitle}
-                  className="h-8 w-8 rounded-full"
                 />
-              )}
-              {result.channelTitle}
-              <span className="text-sm font-normal text-muted-foreground">
-                {result.videos.length} videos in last 30 days
-              </span>
+                <AvatarFallback>{result.channelTitle[0]}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-base font-bold leading-tight truncate">
+                  {result.channelTitle}
+                </p>
+                <p className="text-xs font-normal text-muted-foreground">
+                  {result.videos.length} videos in last 30 days
+                </p>
+              </div>
               {(() => {
                 const alreadyTracked = trackedChannels.some(
                   (ch) => ch.channelId === result.channelId
@@ -511,7 +595,7 @@ export default function Home() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="ml-auto opacity-50 cursor-not-allowed"
+                    className="opacity-50 cursor-not-allowed shrink-0"
                     disabled
                   >
                     <Check className="mr-1.5 h-3.5 w-3.5" />
@@ -521,7 +605,7 @@ export default function Home() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="ml-auto"
+                    className="shrink-0"
                     onClick={handleTrack}
                     disabled={trackState !== "idle"}
                   >
@@ -550,127 +634,179 @@ export default function Home() {
     </div>
   );
 
+  // ---------------------------------------------------------------------------
+  // Tracked View
+  // ---------------------------------------------------------------------------
+
   const TrackedView = (
-    <div className="flex gap-6 h-full">
+    <div className="flex gap-6 h-full min-h-0">
       {/* Center — stats panel */}
       <div className="flex-1 min-w-0">
         {loadingTracked ? (
-          <div className="flex items-center justify-center py-20">
+          <div className="flex items-center justify-center py-24">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : trackedChannels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Radio className="h-10 w-10 text-muted-foreground/40 mb-4" />
-            <h3 className="text-lg font-medium">No channels tracked yet</h3>
-            <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="rounded-full bg-muted p-4 mb-4">
+              <Radio className="h-8 w-8 text-muted-foreground/60" />
+            </div>
+            <h3 className="text-lg font-semibold">No channels tracked yet</h3>
+            <p className="text-sm text-muted-foreground mt-2 max-w-sm">
               Go to <strong>Search</strong>, find a channel, and click{" "}
               <strong>Track Channel</strong> to start monitoring.
             </p>
           </div>
         ) : !selectedChannelId ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="flex items-center justify-center py-24">
             <p className="text-sm text-muted-foreground">
-              Select a channel from the list to view stats.
+              Select a channel to view stats.
             </p>
           </div>
         ) : loadingSelected ? (
-          <div className="flex items-center justify-center py-20">
+          <div className="flex items-center justify-center py-24">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : selectedData ? (
-          <div className="space-y-6">
-            {/* Channel header with stats */}
-            <div className="flex items-center gap-4">
-              {selectedData.channelThumbnail && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={selectedData.channelThumbnail}
-                  alt={selectedData.channelTitle}
-                  className="h-12 w-12 rounded-full"
-                />
-              )}
-              <div>
-                <h2 className="text-xl font-semibold tracking-tight">
-                  {selectedData.channelTitle}
-                </h2>
-                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5" />
-                    {formatNumber(selectedData.subscriberCount)} subscribers
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Eye className="h-3.5 w-3.5" />
-                    {formatNumber(selectedData.totalViews)} total views
-                  </span>
-                  <span>
-                    {selectedData.videos.length} videos in last 30 days
-                  </span>
+          <div className="space-y-5">
+            {/* Channel header card */}
+            <Card className="shadow-sm overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-5 border-b bg-muted/20">
+                <Avatar className="h-14 w-14 border-2 border-border shadow">
+                  <AvatarImage
+                    src={selectedData.channelThumbnail}
+                    alt={selectedData.channelTitle}
+                  />
+                  <AvatarFallback className="text-lg font-bold">
+                    {selectedData.channelTitle[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-xl font-bold tracking-tight truncate">
+                    {selectedData.channelTitle}
+                  </h2>
+                  {lastSynced && (
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Last synced at {formatTime(lastSynced)}
+                    </p>
+                  )}
                 </div>
               </div>
-            </div>
+              <div className="flex flex-wrap gap-3 p-5">
+                <StatPill
+                  icon={<Users className="h-4 w-4" />}
+                  label="Subscribers"
+                  value={formatNumber(selectedData.subscriberCount)}
+                />
+                <StatPill
+                  icon={<Eye className="h-4 w-4" />}
+                  label="Total Views"
+                  value={formatNumber(selectedData.totalViews)}
+                />
+                <StatPill
+                  icon={<BarChart2 className="h-4 w-4" />}
+                  label="Videos (30 days)"
+                  value={String(selectedData.videos.length)}
+                />
+                <StatPill
+                  icon={<TrendingUp className="h-4 w-4" />}
+                  label="Avg VPH"
+                  value={(() => {
+                    const vals = selectedData.videos
+                      .map((v) => v.vph)
+                      .filter((v): v is number => v != null);
+                    if (!vals.length) return "—";
+                    const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+                    return `${formatNumber(Math.round(avg))}/hr`;
+                  })()}
+                />
+              </div>
+            </Card>
 
             {/* Video stats table */}
-            <Card>
+            <Card className="shadow-sm overflow-hidden">
               <CardContent className="p-0">
                 <VideoTable videos={selectedData.videos} />
               </CardContent>
             </Card>
+
+            {/* Legend */}
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground px-1">
+              <span className="font-medium text-foreground">Momentum</span>
+              <span>= VPH relative to channel&apos;s 30-day avg.</span>
+              <Badge variant="outline" className="bg-zinc-100 text-zinc-500 border-zinc-200 font-normal">
+                Underperforming
+              </Badge>
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-normal">
+                1.0–1.9x Steady Growth
+              </Badge>
+              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-normal">
+                2.0–2.4x Crushing It
+              </Badge>
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 font-normal">
+                ⚡ 2.5x+ Viral Velocity
+              </Badge>
+            </div>
           </div>
         ) : null}
       </div>
 
-      {/* Right sidebar — channel list */}
+      {/* Right panel — tracked channel list */}
       {trackedChannels.length > 0 && (
-        <div className="w-56 shrink-0">
+        <div className="w-60 shrink-0">
           <div className="sticky top-0">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Channels
-            </h3>
-            <div className="space-y-1">
-              {trackedChannels.map((ch) => (
-                <div
-                  key={ch.channelId}
-                  className={`group flex items-center gap-2.5 rounded-lg px-3 py-2.5 cursor-pointer transition-colors ${
-                    selectedChannelId === ch.channelId
-                      ? "bg-accent text-accent-foreground"
-                      : "hover:bg-accent/50"
-                  }`}
-                  onClick={() => setSelectedChannelId(ch.channelId)}
-                >
-                  {ch.channelThumbnail && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={ch.channelThumbnail}
-                      alt={ch.channelTitle}
-                      className="h-8 w-8 rounded-full shrink-0"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {ch.channelTitle}
-                    </p>
-                    <span className="flex items-center gap-1 text-xs text-green-600">
-                      <Radio className="h-2.5 w-2.5" /> Active
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemove(ch.channelId);
-                    }}
-                    disabled={removingId === ch.channelId}
+            <div className="rounded-xl border bg-slate-50 dark:bg-zinc-900 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b bg-white/50 dark:bg-zinc-800/50">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tracking {trackedChannels.length} Channel{trackedChannels.length !== 1 ? "s" : ""}
+                </h3>
+              </div>
+              <div className="p-2 space-y-0.5">
+                {trackedChannels.map((ch) => (
+                  <div
+                    key={ch.channelId}
+                    className={`group flex items-center gap-2.5 rounded-lg px-2.5 py-2 cursor-pointer transition-all ${
+                      selectedChannelId === ch.channelId
+                        ? "bg-white dark:bg-zinc-800 shadow-sm border border-border"
+                        : "hover:bg-white/70 dark:hover:bg-zinc-800/70"
+                    }`}
+                    onClick={() => setSelectedChannelId(ch.channelId)}
                   >
-                    {removingId === ch.channelId ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                </div>
-              ))}
+                    <Avatar className="h-8 w-8 shrink-0 border">
+                      <AvatarImage src={ch.channelThumbnail} alt={ch.channelTitle} />
+                      <AvatarFallback className="text-xs">
+                        {ch.channelTitle[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate leading-tight">
+                        {ch.channelTitle}
+                      </p>
+                      <span className="flex items-center gap-1 text-xs text-emerald-600">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        Live
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemove(ch.channelId);
+                      }}
+                      disabled={removingId === ch.channelId}
+                    >
+                      {removingId === ch.channelId ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -684,22 +820,26 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="w-56 shrink-0 border-r flex flex-col">
+      {/* Left Sidebar */}
+      <aside className="w-56 shrink-0 border-r bg-slate-50 dark:bg-zinc-900 flex flex-col">
+        {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 py-5 border-b">
-          <PlaySquare className="h-6 w-6 text-red-500" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500 shadow">
+            <PlaySquare className="h-5 w-5 text-white" />
+          </div>
           <span className="text-lg font-bold tracking-tight">VidSpy</span>
         </div>
 
+        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveNav(item.id)}
-              className={`w-full flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
                 activeNav === item.id
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  ? "bg-white dark:bg-zinc-800 shadow-sm border border-border text-foreground"
+                  : "text-muted-foreground hover:bg-white/70 dark:hover:bg-zinc-800/70 hover:text-foreground"
               }`}
             >
               {item.icon}
@@ -707,13 +847,18 @@ export default function Home() {
             </button>
           ))}
         </nav>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t">
+          <p className="text-xs text-muted-foreground">
+            Polls every hour · 30-day window
+          </p>
+        </div>
       </aside>
 
       {/* Main content */}
       <main className="flex-1 px-8 py-8 overflow-auto">
-        <div className={activeNav === "tracked" ? "" : "mx-auto max-w-5xl"}>
-          {activeNav === "search" ? SearchView : TrackedView}
-        </div>
+        {activeNav === "search" ? SearchView : TrackedView}
       </main>
     </div>
   );
