@@ -34,8 +34,13 @@ interface VideoStats {
 
 interface PreviousSnapshot {
   viewCount: number;
-  momentumScore: number | null;
+  vph: number | null;
   recordedAt: Timestamp;
+}
+
+interface VideoState {
+  isViralOverride: boolean;
+  viralUpgradeAt: Timestamp | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,38 +48,77 @@ interface PreviousSnapshot {
 // ---------------------------------------------------------------------------
 
 /**
- * Decide whether to poll a video on this run.
+ * 3-phase polling decision:
  *
- * Tiered frequency to optimise YouTube API quota:
- *  1. 30-day hard cutoff → never poll.
- *  2. Hourly polling   → video < 48 h old  OR  latestMomentum > 2.0
- *     (the "Viral Exception" — an older video spiking gets hourly attention).
- *  3. Daily polling     → everything else (48 h – 30 d, momentum ≤ 2.0),
- *     only runs when UTC hour === 0.
+ *  Phase A — age ≤ 7 days (168 h)  → always poll hourly
+ *  Phase B — age > 7 days, no viral override → poll every 12 h
+ *  Phase C — age > 7 days, viral override active or expiring → poll hourly
+ *  Hard cutoff — age > 30 days (720 h) → never poll
+ *
+ * Phase C covers both an active 24 h window AND the expiry re-evaluation:
+ * the post-poll logic (not here) decides whether to extend or end the override.
  */
-function shouldPollVideo(
-  publishedAt: string,
-  latestMomentum: number | null
+function shouldPoll(
+  ageHours: number,
+  lastSnapshotHoursAgo: number | null,
+  state: VideoState
 ): boolean {
-  const ageHours =
-    (Date.now() - new Date(publishedAt).getTime()) / 3_600_000;
+  // Hard cutoff
+  if (ageHours > 720) return false;
 
-  // Hard cutoff — 30 days
-  if (ageHours > 30 * 24) return false;
+  // Phase A — always hourly
+  if (ageHours <= 168) return true;
 
-  // Hourly: fresh video
-  if (ageHours < 48) return true;
+  // Phase C — viral override active or needs re-evaluation after 24 h
+  if (state.isViralOverride) return true;
 
-  // Hourly: Viral Exception — momentum spike on an older video
-  if (latestMomentum != null && latestMomentum > 2.0) return true;
+  // Phase B — only if 12+ hours since last snapshot (or no snapshot yet)
+  return lastSnapshotHoursAgo == null || lastSnapshotHoursAgo >= 12;
+}
 
-  // Daily: everything else — only at midnight UTC
-  return new Date().getUTCHours() === 0;
+/**
+ * Read the video_states sub-collection for a channel.
+ * Returns a map of videoId → VideoState.
+ */
+async function getVideoStates(
+  channelId: string
+): Promise<Map<string, VideoState>> {
+  const snap = await db
+    .collection("tracked_channels")
+    .doc(channelId)
+    .collection("video_states")
+    .get();
+
+  const map = new Map<string, VideoState>();
+  for (const d of snap.docs) {
+    const data = d.data();
+    map.set(d.id, {
+      isViralOverride: data.isViralOverride ?? false,
+      viralUpgradeAt: (data.viralUpgradeAt as Timestamp) ?? null,
+    });
+  }
+  return map;
+}
+
+/**
+ * Upsert a single video_states doc.
+ */
+async function setVideoState(
+  channelId: string,
+  videoId: string,
+  state: VideoState
+): Promise<void> {
+  await db
+    .collection("tracked_channels")
+    .doc(channelId)
+    .collection("video_states")
+    .doc(videoId)
+    .set(state);
 }
 
 /**
  * Fetch the most recent videos (up to 50) from an uploads playlist
- * that were published in the last 30 days.
+ * published in the last 30 days.
  */
 async function fetchRecentVideos(
   uploadsPlaylistId: string,
@@ -90,9 +134,8 @@ async function fetchRecentVideos(
   url.searchParams.set("key", apiKey);
 
   const res = await fetch(url.toString());
-  if (!res.ok) {
-    throw new Error(`playlistItems.list failed (${res.status})`);
-  }
+  if (!res.ok) throw new Error(`playlistItems.list failed (${res.status})`);
+
   const data = await res.json() as {
     items?: {
       contentDetails: { videoId: string };
@@ -127,16 +170,15 @@ async function fetchVideoStatsBatch(
   const statsMap: Record<string, VideoStats> = {};
 
   for (let i = 0; i < videoIds.length; i += 50) {
-    const batch = videoIds.slice(i, i + 50);
+    const batchIds = videoIds.slice(i, i + 50);
     const url = new URL(`${YT_BASE}/videos`);
     url.searchParams.set("part", "statistics");
-    url.searchParams.set("id", batch.join(","));
+    url.searchParams.set("id", batchIds.join(","));
     url.searchParams.set("key", apiKey);
 
     const res = await fetch(url.toString());
-    if (!res.ok) {
-      throw new Error(`videos.list failed (${res.status})`);
-    }
+    if (!res.ok) throw new Error(`videos.list failed (${res.status})`);
+
     const data = await res.json() as {
       items?: { id: string; statistics: Record<string, string> }[];
     };
@@ -155,8 +197,8 @@ async function fetchVideoStatsBatch(
 }
 
 /**
- * Read the most recent snapshot for each videoId from a channel's snapshots
- * sub-collection. Returns a map of videoId → { viewCount, momentumScore, recordedAt }.
+ * Read the most recent snapshot for each videoId in a channel.
+ * Returns a map of videoId → { viewCount, vph, recordedAt }.
  */
 async function getPreviousSnapshots(
   channelId: string,
@@ -171,17 +213,17 @@ async function getPreviousSnapshots(
   const latestMap = new Map<string, PreviousSnapshot>();
   const videoIdSet = new Set(videoIds);
 
-  for (const doc of snap.docs) {
-    const data = doc.data();
+  for (const d of snap.docs) {
+    const data = d.data();
     const vid = data.videoId as string;
     if (!videoIdSet.has(vid)) continue;
 
-    const existing = latestMap.get(vid);
     const recordedAt = data.recordedAt as Timestamp;
+    const existing = latestMap.get(vid);
     if (!existing || recordedAt.seconds > existing.recordedAt.seconds) {
       latestMap.set(vid, {
         viewCount: data.viewCount as number,
-        momentumScore: (data.momentumScore as number) ?? null,
+        vph: (data.vph as number | undefined) ?? null,
         recordedAt,
       });
     }
@@ -214,6 +256,7 @@ export const pollTrackedChannels = onSchedule(
     }
 
     const now = new Date();
+    const nowMs = now.getTime();
     const isoKey = now.toISOString().replace(/\.\d{3}Z$/, "Z");
 
     for (const channelDoc of channelsSnap.docs) {
@@ -224,17 +267,35 @@ export const pollTrackedChannels = onSchedule(
         // 1. Fetch recent videos (last 30 days)
         const allVideos = await fetchRecentVideos(uploadsPlaylistId, apiKey);
 
-        // 2. Read previous snapshots FIRST — we need latestMomentum to decide
-        //    polling frequency (the "Viral Exception" for older videos spiking)
+        // 2. Load snapshots and viral states for all videos
         const prevSnapshots = await getPreviousSnapshots(
           channelId,
           allVideos.map((v) => v.videoId)
         );
+        const videoStates = await getVideoStates(channelId);
 
-        // 3. Filter using tiered frequency logic
+        // 3. Compute channel avg VPH from latest known snapshots
+        const allKnownVphs = Array.from(prevSnapshots.values())
+          .map((s) => s.vph)
+          .filter((v): v is number => v != null && v > 0);
+        const channelAvgVph =
+          allKnownVphs.length > 0
+            ? allKnownVphs.reduce((a, b) => a + b, 0) / allKnownVphs.length
+            : null;
+
+        // 4. Filter to videos that should be polled this run
         const videosToProcess = allVideos.filter((v) => {
+          const ageHours =
+            (nowMs - new Date(v.publishedAt).getTime()) / 3_600_000;
           const prev = prevSnapshots.get(v.videoId);
-          return shouldPollVideo(v.publishedAt, prev?.momentumScore ?? null);
+          const lastSnapshotHoursAgo = prev
+            ? (nowMs - prev.recordedAt.toDate().getTime()) / 3_600_000
+            : null;
+          const state: VideoState = videoStates.get(v.videoId) ?? {
+            isViralOverride: false,
+            viralUpgradeAt: null,
+          };
+          return shouldPoll(ageHours, lastSnapshotHoursAgo, state);
         });
 
         if (videosToProcess.length === 0) {
@@ -242,64 +303,56 @@ export const pollTrackedChannels = onSchedule(
           continue;
         }
 
-        // 4. Batch-fetch current stats from YouTube
+        // 5. Batch-fetch current stats from YouTube
         const statsMap = await fetchVideoStatsBatch(
           videosToProcess.map((v) => v.videoId),
           apiKey
         );
 
-        // 5. Compute delta-based VPH for each video
+        // 6. Compute VPH per video using phase-appropriate formula
         const vphMap = new Map<string, number | null>();
         for (const video of videosToProcess) {
           const currentViews = statsMap[video.videoId]?.viewCount;
           const prev = prevSnapshots.get(video.videoId);
 
           if (currentViews == null || !prev) {
-            // No previous snapshot — can't compute delta VPH yet
+            // No previous snapshot — first poll, can't compute delta
             vphMap.set(video.videoId, null);
             continue;
           }
 
-          const hoursBetween =
-            (now.getTime() - prev.recordedAt.toDate().getTime()) / 3_600_000;
-
-          if (hoursBetween < 0.01) {
-            // Less than ~36 seconds apart — avoid division by near-zero
-            vphMap.set(video.videoId, null);
-            continue;
-          }
-
+          const ageHours =
+            (nowMs - new Date(video.publishedAt).getTime()) / 3_600_000;
+          const state: VideoState = videoStates.get(video.videoId) ?? {
+            isViralOverride: false,
+            viralUpgradeAt: null,
+          };
           const viewDelta = currentViews - prev.viewCount;
-          const vph = viewDelta / hoursBetween;
+
+          let vph: number;
+          if (ageHours <= 168 || state.isViralOverride) {
+            // Phase A or Phase C — use actual elapsed hours (hourly polling)
+            const hoursBetween =
+              (nowMs - prev.recordedAt.toDate().getTime()) / 3_600_000;
+            if (hoursBetween < 0.01) {
+              vphMap.set(video.videoId, null);
+              continue;
+            }
+            vph = viewDelta / hoursBetween;
+          } else {
+            // Phase B — fixed 12 h denominator
+            vph = viewDelta / 12;
+          }
+
           vphMap.set(video.videoId, Math.round(vph * 100) / 100);
         }
 
-        // 6. Compute avg VPH from first 5 videos that have a real VPH
-        const baselineVphs: number[] = [];
-        for (const video of videosToProcess.slice(0, 5)) {
-          const vph = vphMap.get(video.videoId);
-          if (vph != null && vph > 0) baselineVphs.push(vph);
-        }
-        const avgVph =
-          baselineVphs.length > 0
-            ? baselineVphs.reduce((a, b) => a + b, 0) / baselineVphs.length
-            : null;
-
-        // 7. Write snapshots + track top momentum
+        // 7. Write snapshot docs and update channel metadata
         const batch = db.batch();
-        let topMomentumVideoId: string | null = null;
-        let topMomentumScore = 0;
 
         for (const video of videosToProcess) {
           const stats = statsMap[video.videoId];
           if (!stats?.viewCount) continue;
-
-          const vph = vphMap.get(video.videoId) ?? null;
-          let momentumScore: number | null = null;
-
-          if (vph != null && avgVph != null && avgVph > 0) {
-            momentumScore = Math.round((vph / avgVph) * 100) / 100;
-          }
 
           const snapRef = db
             .collection("tracked_channels")
@@ -312,18 +365,12 @@ export const pollTrackedChannels = onSchedule(
             viewCount: stats.viewCount ?? 0,
             likeCount: stats.likeCount ?? 0,
             commentCount: stats.commentCount ?? 0,
-            vph,
-            momentumScore,
+            vph: vphMap.get(video.videoId) ?? null,
             recordedAt: Timestamp.fromDate(now),
           });
-
-          if (momentumScore != null && momentumScore > topMomentumScore) {
-            topMomentumScore = momentumScore;
-            topMomentumVideoId = video.videoId;
-          }
         }
 
-        // Update parent channel doc — refresh video metadata + metrics
+        // Refresh video metadata on the channel doc
         const videosMeta = allVideos.map((v) => ({
           videoId: v.videoId,
           title: v.title,
@@ -332,16 +379,60 @@ export const pollTrackedChannels = onSchedule(
         }));
         batch.update(channelDoc.ref, {
           lastUpdated: Timestamp.fromDate(now),
-          currentTopMomentum: topMomentumVideoId,
           videos: videosMeta,
         });
 
         await batch.commit();
+
+        // 8. Update viral states (separate sub-collection — outside the batch)
+        const stateUpdates: Promise<void>[] = [];
+
+        for (const video of videosToProcess) {
+          const vph = vphMap.get(video.videoId);
+          if (vph == null) continue;
+
+          const ageHours =
+            (nowMs - new Date(video.publishedAt).getTime()) / 3_600_000;
+          if (ageHours <= 168) continue; // Phase A: no viral state needed
+
+          const state: VideoState = videoStates.get(video.videoId) ?? {
+            isViralOverride: false,
+            viralUpgradeAt: null,
+          };
+          const viralAgeHours = state.viralUpgradeAt
+            ? (nowMs - state.viralUpgradeAt.toDate().getTime()) / 3_600_000
+            : null;
+          const viralExpired = viralAgeHours != null && viralAgeHours >= 24;
+
+          if (channelAvgVph != null && vph >= 2 * channelAvgVph) {
+            // Upgrade to or extend viral override
+            if (!state.isViralOverride || viralExpired) {
+              stateUpdates.push(
+                setVideoState(channelId, video.videoId, {
+                  isViralOverride: true,
+                  viralUpgradeAt: Timestamp.fromDate(now),
+                })
+              );
+            }
+            // Active override within 24 h: no write needed
+          } else if (state.isViralOverride && viralExpired) {
+            // VPH dropped below 2× threshold after 24 h → demote to Phase B
+            stateUpdates.push(
+              setVideoState(channelId, video.videoId, {
+                isViralOverride: false,
+                viralUpgradeAt: null,
+              })
+            );
+          }
+        }
+
+        await Promise.all(stateUpdates);
+
         console.log(
-          `Channel ${channelId}: wrote ${videosToProcess.length} snapshots. Top momentum: ${topMomentumVideoId} (${topMomentumScore.toFixed(2)})`
+          `Channel ${channelId}: wrote ${videosToProcess.length} snapshots, ` +
+          `${stateUpdates.length} state updates. Avg VPH: ${channelAvgVph?.toFixed(1) ?? "n/a"}`
         );
       } catch (err) {
-        // Log and continue — one bad channel shouldn't abort the whole run
         console.error(`Error polling channel ${channelId}:`, err);
       }
     }

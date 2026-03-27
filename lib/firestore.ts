@@ -19,7 +19,6 @@ export interface TrackedChannel {
   channelThumbnail: string;
   uploadsPlaylistId: string;
   lastUpdated: Timestamp | null;
-  currentTopMomentum: string | null;
   subscriberCount?: number | null;
   totalViews?: number | null;
 }
@@ -30,11 +29,10 @@ export interface VideoSnapshot {
   likeCount: number;
   commentCount: number;
   vph: number | null;
-  momentumScore: number | null;
   recordedAt: Timestamp;
 }
 
-/** Video metadata stored on the channel doc — no stats, just identity + publish info. */
+/** Video metadata stored on the channel doc — identity + publish info only. */
 export interface VideoMeta {
   videoId: string;
   title: string;
@@ -42,7 +40,13 @@ export interface VideoMeta {
   publishedAt: string;
 }
 
-/** Full channel data assembled from Firestore (channel doc + snapshots). */
+/** Mutable per-video polling state stored in the video_states sub-collection. */
+export interface VideoState {
+  isViralOverride: boolean;
+  viralUpgradeAt: Timestamp | null;
+}
+
+/** Full channel data assembled from Firestore (channel doc + latest snapshots). */
 export interface TrackedChannelData {
   channelId: string;
   channelTitle: string;
@@ -58,7 +62,6 @@ export interface TrackedChannelData {
     likeCount: number | null;
     commentCount: number | null;
     vph: number | null;
-    momentumScore: number | null;
   }[];
 }
 
@@ -80,7 +83,6 @@ export async function addTrackedChannel(
       channelThumbnail,
       uploadsPlaylistId,
       lastUpdated: serverTimestamp(),
-      currentTopMomentum: null,
     },
     { merge: true }
   );
@@ -101,8 +103,8 @@ export async function addTrackedChannel(
 
 /**
  * Track a channel AND immediately cache the current video metrics as the
- * first baseline snapshot. VPH and momentum are null on this first snapshot
- * because we need at least two data points to compute a real delta.
+ * first baseline snapshot. VPH is null on this first snapshot because we
+ * need at least two data points to compute a real delta.
  * Also stores video metadata (title, thumbnail, publishedAt) on the channel
  * doc so the Tracked Channels page can render without calling the YouTube API.
  */
@@ -159,7 +161,6 @@ export async function trackChannelWithData(
       likeCount: video.likeCount ?? 0,
       commentCount: video.commentCount ?? 0,
       vph: null,
-      momentumScore: null,
       recordedAt: firestoreNow,
     };
 
@@ -167,7 +168,7 @@ export async function trackChannelWithData(
     snapshotMap.set(video.videoId, snapshot);
   }
 
-  // Write the channel doc — includes video metadata
+  // Write the channel doc with video metadata
   const channelRef = doc(db, "tracked_channels", channelId);
   batch.set(
     channelRef,
@@ -178,7 +179,6 @@ export async function trackChannelWithData(
       subscriberCount,
       totalViews,
       lastUpdated: firestoreNow,
-      currentTopMomentum: null,
       videos: videosMeta,
     },
     { merge: true }
@@ -262,7 +262,7 @@ export async function getLatestSnapshotsForChannel(
 /**
  * Read a tracked channel's full data from Firestore — channel doc (has video
  * metadata like title/thumbnail/publishedAt) merged with latest snapshots
- * (has viewCount/likeCount/commentCount/vph/momentumScore).
+ * (has viewCount/likeCount/commentCount/vph).
  * No YouTube API calls needed.
  */
 export async function getTrackedChannelData(
@@ -275,10 +275,8 @@ export async function getTrackedChannelData(
   const data = channelSnap.data();
   const videosMeta: VideoMeta[] = data.videos ?? [];
 
-  // Get latest snapshots
   const snapshots = await getLatestSnapshotsForChannel(channelId);
 
-  // Merge metadata + snapshots
   const mergedVideos = videosMeta.map((meta) => {
     const snap = snapshots.get(meta.videoId);
     return {
@@ -290,7 +288,6 @@ export async function getTrackedChannelData(
       likeCount: snap?.likeCount ?? null,
       commentCount: snap?.commentCount ?? null,
       vph: snap?.vph ?? null,
-      momentumScore: snap?.momentumScore ?? null,
     };
   });
 

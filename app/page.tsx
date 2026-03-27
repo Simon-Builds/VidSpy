@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  PlaySquare,
   Search,
   Loader2,
   BookmarkPlus,
@@ -21,7 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -30,7 +29,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   trackChannelWithData,
@@ -53,8 +51,6 @@ interface VideoItem {
   likeCount: number | null;
   commentCount: number | null;
   vph: number | null;
-  momentumScore: number | null;
-  momentumLabel: MomentumLabel;
 }
 
 interface ApiResult {
@@ -68,12 +64,6 @@ interface ApiResult {
 }
 
 type NavItem = "search" | "tracked";
-type MomentumLabel =
-  | "Underperforming"
-  | "Steady Growth"
-  | "Crushing It"
-  | "Viral Velocity"
-  | null;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,14 +86,6 @@ function formatDate(iso: string) {
 
 function formatTime(d: Date) {
   return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-}
-
-function getMomentumLabel(score: number | null): MomentumLabel {
-  if (score == null) return null;
-  if (score >= 2.5) return "Viral Velocity";
-  if (score >= 2.0) return "Crushing It";
-  if (score >= 1.0) return "Steady Growth";
-  return "Underperforming";
 }
 
 // ---------------------------------------------------------------------------
@@ -138,50 +120,10 @@ function StatCard({
 }
 
 // ---------------------------------------------------------------------------
-// MomentumBadge — Shadcn Badge with tier colours
-// ---------------------------------------------------------------------------
-
-function MomentumBadge({ label, score }: { label: MomentumLabel; score: number | null }) {
-  if (!label) return <span className="text-muted-foreground text-sm">—</span>;
-  const scoreText = score != null ? ` ${score.toFixed(1)}x` : "";
-
-  if (label === "Viral Velocity")
-    return (
-      <Badge className="bg-orange-500/15 text-orange-400 border-orange-500/30 hover:bg-orange-500/20 animate-pulse">
-        ⚡ Viral Velocity
-        <span className="opacity-60 ml-0.5">{scoreText}</span>
-      </Badge>
-    );
-
-  if (label === "Crushing It")
-    return (
-      <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 animate-pulse">
-        Crushing It
-        <span className="opacity-60 ml-0.5">{scoreText}</span>
-      </Badge>
-    );
-
-  if (label === "Steady Growth")
-    return (
-      <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 hover:bg-blue-500/20">
-        Steady Growth
-        <span className="opacity-60 ml-0.5">{scoreText}</span>
-      </Badge>
-    );
-
-  return (
-    <Badge className="bg-zinc-500/15 text-zinc-400 border-zinc-500/30 hover:bg-zinc-500/20">
-      Underperforming
-      <span className="opacity-60 ml-0.5">{scoreText}</span>
-    </Badge>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // VideoTable
 // ---------------------------------------------------------------------------
 
-function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; showMomentum?: boolean }) {
+function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?: boolean }) {
   const [vphSort, setVphSort] = useState<"asc" | "desc" | null>(null);
 
   const vphValues = videos.map((v) => v.vph).filter((v): v is number => v != null);
@@ -215,31 +157,26 @@ function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; show
           <TableHead className="w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Comments
           </TableHead>
-          {showMomentum && (
-            <>
-              <TableHead
-                className="w-36 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground transition-colors"
-                onClick={cycleSort}
-                title="Views gained per hour — click to sort"
-              >
-                <span className="inline-flex items-center justify-end gap-1">
-                  VPH
-                  {vphSort === "desc" ? (
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  ) : vphSort === "asc" ? (
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  ) : (
-                    <span className="flex flex-col opacity-30">
-                      <ChevronUp className="h-2.5 w-2.5 -mb-0.5" />
-                      <ChevronDown className="h-2.5 w-2.5" />
-                    </span>
-                  )}
-                </span>
-              </TableHead>
-              <TableHead className="w-44 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Momentum
-              </TableHead>
-            </>
+          {showVph && (
+            <TableHead
+              className="w-36 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground transition-colors"
+              onClick={cycleSort}
+              title="Views gained per hour — click to sort"
+            >
+              <span className="inline-flex items-center justify-end gap-1">
+                VPH
+                {vphSort === "desc" ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : vphSort === "asc" ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <span className="flex flex-col opacity-30">
+                    <ChevronUp className="h-2.5 w-2.5 -mb-0.5" />
+                    <ChevronDown className="h-2.5 w-2.5" />
+                  </span>
+                )}
+              </span>
+            </TableHead>
           )}
           <TableHead className="w-36 pr-6 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Published
@@ -285,26 +222,20 @@ function VideoTable({ videos, showMomentum = true }: { videos: VideoItem[]; show
               <TableCell className="text-right py-4 text-sm text-muted-foreground tabular-nums">
                 {formatNumber(video.commentCount)}
               </TableCell>
-              {showMomentum && (
-                <>
-                  <TableCell className="text-right py-4">
-                    {video.vph != null ? (
-                      <span className="inline-flex items-center justify-end gap-1.5">
-                        <span className="text-base font-bold text-foreground tabular-nums">
-                          {formatNumber(Math.round(video.vph))}/hr
-                        </span>
-                        {isAboveAvg && (
-                          <TrendingUp className="h-3.5 w-3.5 text-emerald-500/70 shrink-0" />
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right py-4 pr-2">
-                    <MomentumBadge label={video.momentumLabel} score={video.momentumScore} />
-                  </TableCell>
-                </>
+              {showVph && (
+                <TableCell className="text-right py-4">
+                  {video.vph != null ? (
+                    <span
+                      className={`text-base font-bold tabular-nums ${
+                        isAboveAvg ? "text-emerald-400" : "text-foreground"
+                      }`}
+                    >
+                      {formatNumber(Math.round(video.vph))}/hr
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">—</span>
+                  )}
+                </TableCell>
               )}
               <TableCell className="pr-6 text-right py-4 text-sm text-muted-foreground">
                 {formatDate(video.publishedAt)}
@@ -355,10 +286,7 @@ export default function Home() {
     try {
       const cached = await getTrackedChannelData(channelId);
       if (!cached) return;
-      const videos: VideoItem[] = cached.videos.map((v) => ({
-        ...v,
-        momentumLabel: getMomentumLabel(v.momentumScore),
-      }));
+      const videos: VideoItem[] = cached.videos;
       setSelectedData({
         channelId: cached.channelId,
         channelTitle: cached.channelTitle,
@@ -427,7 +355,7 @@ export default function Home() {
       const enriched = result.videos.map((v) => {
         const snap = snapshotMap.get(v.videoId);
         if (!snap) return v;
-        return { ...v, vph: snap.vph, momentumScore: snap.momentumScore, momentumLabel: getMomentumLabel(snap.momentumScore) };
+        return { ...v, vph: snap.vph };
       });
       setResult({ ...result, videos: enriched });
       setTrackState("tracked");
@@ -530,7 +458,7 @@ export default function Home() {
               );
             })()}
           </div>
-          <VideoTable videos={result.videos} showMomentum={false} />
+          <VideoTable videos={result.videos} showVph={false} />
         </div>
       )}
     </div>
@@ -599,10 +527,19 @@ export default function Home() {
                 description="channel audience"
               />
               <StatCard
-                label="Total Views"
+                label="Avg Views / Video"
                 icon={<Eye className="h-4 w-4" />}
-                value={formatNumber(selectedData.totalViews)}
-                description="lifetime views"
+                value={(() => {
+                  const withViews = selectedData.videos.filter(
+                    (v) => v.viewCount != null
+                  );
+                  if (!withViews.length) return "—";
+                  const avg =
+                    withViews.reduce((s, v) => s + (v.viewCount ?? 0), 0) /
+                    withViews.length;
+                  return formatNumber(Math.round(avg));
+                })()}
+                description="per video (last 30 days)"
               />
               <StatCard
                 label="Videos / 30 days"
@@ -630,15 +567,10 @@ export default function Home() {
               <VideoTable videos={selectedData.videos} />
             </div>
 
-            {/* Momentum legend */}
-            <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground px-1">
-              <span className="font-medium text-foreground/60">Momentum</span>
-              <span className="text-muted-foreground/50">= VPH relative to channel&apos;s 30-day avg</span>
-              <Badge className="bg-zinc-500/15 text-zinc-400 border-zinc-500/30 font-normal">Underperforming</Badge>
-              <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 font-normal">1.0–1.9x Steady Growth</Badge>
-              <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-normal">2.0–2.4x Crushing It</Badge>
-              <Badge className="bg-orange-500/15 text-orange-400 border-orange-500/30 font-normal">⚡ 2.5x+ Viral Velocity</Badge>
-            </div>
+            {/* VPH legend */}
+            <p className="text-xs text-muted-foreground/60 px-1">
+              <span className="text-emerald-400 font-medium">Green</span> VPH = above this channel&apos;s current average
+            </p>
           </div>
         ) : null}
       </div>
@@ -708,9 +640,18 @@ export default function Home() {
       <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col">
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 py-5 border-b border-border">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 shadow">
-            <PlaySquare className="h-5 w-5 text-white" />
-          </div>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-7 w-7 text-muted-foreground shrink-0"
+          >
+            {/* Monitoring frame */}
+            <rect x="2" y="8" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.75" />
+            {/* Velocity arrow */}
+            <path d="M10 15 L20 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+            <path d="M15 4 L20 4 L20 9" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           <span className="text-base font-bold tracking-tight text-foreground">VidSpy</span>
         </div>
 
