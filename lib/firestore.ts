@@ -8,6 +8,9 @@ import {
   writeBatch,
   serverTimestamp,
   Timestamp,
+  query,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -45,6 +48,12 @@ export interface VideoMeta {
 export interface VideoState {
   isViralOverride: boolean;
   viralUpgradeAt: Timestamp | null;
+}
+
+/** One channel-level VPH data point stored in the vph_history sub-collection. */
+export interface ChannelVphSnapshot {
+  vph: number;
+  recordedAt: Timestamp;
 }
 
 /** Full channel data assembled from Firestore (channel doc + latest snapshots). */
@@ -345,4 +354,20 @@ export async function getTrackedChannelData(
     avgEngagementRate: data.avgEngagementRate ?? computedAvgEr,
     videos: mergedVideos,
   };
+}
+
+/**
+ * Return the last N channel-level VPH snapshots from vph_history,
+ * ordered chronologically (oldest first — ready for charting).
+ */
+export async function getChannelVphHistory(
+  channelId: string,
+  limitCount = 24
+): Promise<ChannelVphSnapshot[]> {
+  const ref = collection(db, "tracked_channels", channelId, "vph_history");
+  const q = query(ref, orderBy("recordedAt", "desc"), limit(limitCount));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map((d) => d.data() as ChannelVphSnapshot)
+    .reverse(); // chronological order for chart
 }

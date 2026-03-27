@@ -117,6 +117,29 @@ async function setVideoState(
 }
 
 /**
+ * Fetch channel-level statistics (subscriber count + total view count).
+ */
+async function fetchChannelStats(
+  channelId: string,
+  apiKey: string
+): Promise<{ subscriberCount: number | null; totalViews: number | null }> {
+  const url = new URL(`${YT_BASE}/channels`);
+  url.searchParams.set("part", "statistics");
+  url.searchParams.set("id", channelId);
+  url.searchParams.set("key", apiKey);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`channels.list failed (${res.status})`);
+  const data = await res.json() as {
+    items?: { statistics: Record<string, string> }[];
+  };
+  const s = data.items?.[0]?.statistics;
+  return {
+    subscriberCount: s?.subscriberCount != null ? Number(s.subscriberCount) : null,
+    totalViews: s?.viewCount != null ? Number(s.viewCount) : null,
+  };
+}
+
+/**
  * Fetch the most recent videos (up to 50) from an uploads playlist
  * published in the last 30 days.
  */
@@ -264,6 +287,15 @@ export const pollTrackedChannels = onSchedule(
       const { uploadsPlaylistId } = channelDoc.data() as ChannelDoc;
 
       try {
+        // 0. Fetch channel-level stats and compute ChannelVPH delta
+        const channelStats = await fetchChannelStats(channelId, apiKey);
+        const prevTotalViews =
+          (channelDoc.data() as { totalViews?: number }).totalViews ?? null;
+        const channelVph =
+          channelStats.totalViews != null && prevTotalViews != null
+            ? channelStats.totalViews - prevTotalViews
+            : null;
+
         // 1. Fetch recent videos (last 30 days)
         const allVideos = await fetchRecentVideos(uploadsPlaylistId, apiKey);
 
@@ -407,11 +439,23 @@ export const pollTrackedChannels = onSchedule(
           lastUpdated: Timestamp.fromDate(now),
           videos: videosMeta,
           avgEngagementRate,
+          subscriberCount: channelStats.subscriberCount,
+          totalViews: channelStats.totalViews,
         });
 
         await batch.commit();
 
-        // 8. Update viral states (separate sub-collection — outside the batch)
+        // 8. Write channel-level VPH history (skip if delta unavailable)
+        if (channelVph != null) {
+          await db
+            .collection("tracked_channels")
+            .doc(channelId)
+            .collection("vph_history")
+            .doc(isoKey)
+            .set({ vph: channelVph, recordedAt: Timestamp.fromDate(now) });
+        }
+
+        // 9. Update viral states (separate sub-collection — outside the batch)
         const stateUpdates: Promise<void>[] = [];
 
         for (const video of videosToProcess) {
@@ -457,7 +501,9 @@ export const pollTrackedChannels = onSchedule(
 
         console.log(
           `Channel ${channelId}: wrote ${videosToProcess.length} snapshots, ` +
-          `${stateUpdates.length} state updates. Avg VPH: ${channelAvgVph?.toFixed(1) ?? "n/a"}`
+          `${stateUpdates.length} state updates. ` +
+          `Avg VPH: ${channelAvgVph?.toFixed(1) ?? "n/a"}, ` +
+          `Channel VPH: ${channelVph ?? "n/a"}`
         );
       } catch (err) {
         console.error(`Error polling channel ${channelId}:`, err);

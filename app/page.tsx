@@ -31,11 +31,21 @@ import {
 } from "@/components/ui/table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import {
   trackChannelWithData,
   removeTrackedChannel,
   getTrackedChannels,
   getTrackedChannelData,
+  getChannelVphHistory,
   type TrackedChannel,
+  type ChannelVphSnapshot,
 } from "@/lib/firestore";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +126,90 @@ function StatCard({
         {value}
       </p>
       <p className="text-xs text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// VelocityChart — purple area chart of channel-wide VPH over time
+// ---------------------------------------------------------------------------
+
+function VelocityChartSkeleton() {
+  return (
+    <div className="rounded-lg border border-border bg-card p-5">
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-foreground">Channel Velocity</p>
+        <p className="text-xs text-muted-foreground mt-0.5">Views per hour — last 24 hours</p>
+      </div>
+      <div className="h-[160px] flex items-center justify-center">
+        <p className="text-xs text-muted-foreground/50">
+          Collecting data — check back after the next hourly poll
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function VelocityChart({ data }: { data: ChannelVphSnapshot[] }) {
+  const chartData = data.map((d) => ({
+    time: d.recordedAt.toDate().toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+    vph: d.vph,
+  }));
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5">
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-foreground">Channel Velocity</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Views per hour — last {data.length}h
+        </p>
+      </div>
+      <ResponsiveContainer width="100%" height={160}>
+        <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <defs>
+            <linearGradient id="velocityGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.45} />
+              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <XAxis
+            dataKey="time"
+            tick={{ fontSize: 10, fill: "#6b7280" }}
+            tickLine={false}
+            axisLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: "#6b7280" }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => formatNumber(v)}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "var(--card)",
+              borderColor: "var(--border)",
+              borderRadius: "var(--radius)",
+              fontSize: "12px",
+              color: "var(--foreground)",
+            }}
+            formatter={(v) => [`${formatNumber(typeof v === "number" ? v : null)}/hr`, "Channel VPH"]}
+          />
+          <Area
+            type="monotone"
+            dataKey="vph"
+            stroke="#8b5cf6"
+            strokeWidth={2}
+            fill="url(#velocityGradient)"
+            dot={false}
+            activeDot={{ r: 4, fill: "#8b5cf6", strokeWidth: 0 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -304,6 +398,7 @@ export default function Home() {
   const [selectedData, setSelectedData] = useState<ApiResult | null>(null);
   const [loadingSelected, setLoadingSelected] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const [vphHistory, setVphHistory] = useState<ChannelVphSnapshot[]>([]);
 
   useEffect(() => {
     getTrackedChannels()
@@ -318,8 +413,12 @@ export default function Home() {
   const fetchChannelData = useCallback(async (channelId: string) => {
     setLoadingSelected(true);
     setSelectedData(null);
+    setVphHistory([]);
     try {
-      const cached = await getTrackedChannelData(channelId);
+      const [cached, history] = await Promise.all([
+        getTrackedChannelData(channelId),
+        getChannelVphHistory(channelId),
+      ]);
       if (!cached) return;
       const videos: VideoItem[] = cached.videos;
       setSelectedData({
@@ -331,6 +430,7 @@ export default function Home() {
         totalViews: cached.totalViews,
         videos,
       });
+      setVphHistory(history);
       setLastSynced(new Date());
     } catch {
       /* silent */
@@ -607,6 +707,13 @@ export default function Home() {
                 description="channel speed"
               />
             </div>
+
+            {/* Channel velocity chart */}
+            {vphHistory.length > 0 ? (
+              <VelocityChart data={vphHistory} />
+            ) : (
+              <VelocityChartSkeleton />
+            )}
 
             {/* Video table */}
             <div className="rounded-lg border border-border bg-card overflow-hidden">
