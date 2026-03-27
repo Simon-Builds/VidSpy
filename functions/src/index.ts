@@ -347,6 +347,31 @@ export const pollTrackedChannels = onSchedule(
           vphMap.set(video.videoId, Math.round(vph * 100) / 100);
         }
 
+        // 7a. Compute engagement rate per polled video
+        const erMap = new Map<string, number | null>();
+        for (const video of videosToProcess) {
+          const stats = statsMap[video.videoId];
+          if (!stats?.viewCount || stats.viewCount === 0) {
+            erMap.set(video.videoId, null);
+            continue;
+          }
+          const er =
+            (((stats.likeCount ?? 0) + (stats.commentCount ?? 0)) /
+              stats.viewCount) *
+            100;
+          erMap.set(video.videoId, Math.round(er * 100) / 100);
+        }
+
+        const erValues = Array.from(erMap.values()).filter(
+          (v): v is number => v != null
+        );
+        const avgEngagementRate =
+          erValues.length > 0
+            ? Math.round(
+                (erValues.reduce((a, b) => a + b, 0) / erValues.length) * 100
+              ) / 100
+            : null;
+
         // 7. Write snapshot docs and update channel metadata
         const batch = db.batch();
 
@@ -366,6 +391,7 @@ export const pollTrackedChannels = onSchedule(
             likeCount: stats.likeCount ?? 0,
             commentCount: stats.commentCount ?? 0,
             vph: vphMap.get(video.videoId) ?? null,
+            engagementRate: erMap.get(video.videoId) ?? null,
             recordedAt: Timestamp.fromDate(now),
           });
         }
@@ -380,6 +406,7 @@ export const pollTrackedChannels = onSchedule(
         batch.update(channelDoc.ref, {
           lastUpdated: Timestamp.fromDate(now),
           videos: videosMeta,
+          avgEngagementRate,
         });
 
         await batch.commit();

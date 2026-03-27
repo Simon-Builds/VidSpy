@@ -29,6 +29,7 @@ export interface VideoSnapshot {
   likeCount: number;
   commentCount: number;
   vph: number | null;
+  engagementRate: number | null;
   recordedAt: Timestamp;
 }
 
@@ -53,6 +54,7 @@ export interface TrackedChannelData {
   channelThumbnail: string;
   subscriberCount: number | null;
   totalViews: number | null;
+  avgEngagementRate: number | null;
   videos: {
     videoId: string;
     title: string;
@@ -62,6 +64,7 @@ export interface TrackedChannelData {
     likeCount: number | null;
     commentCount: number | null;
     vph: number | null;
+    engagementRate: number | null;
   }[];
 }
 
@@ -155,18 +158,42 @@ export async function trackChannelWithData(
       `${isoKey}_${video.videoId}`
     );
 
+    const er =
+      video.viewCount > 0
+        ? Math.round(
+            (((video.likeCount ?? 0) + (video.commentCount ?? 0)) /
+              video.viewCount) *
+              10000
+          ) / 100
+        : null;
+
     const snapshot: VideoSnapshot = {
       videoId: video.videoId,
       viewCount: video.viewCount ?? 0,
       likeCount: video.likeCount ?? 0,
       commentCount: video.commentCount ?? 0,
       vph: null,
+      engagementRate: er,
       recordedAt: firestoreNow,
     };
 
     batch.set(snapRef, snapshot);
     snapshotMap.set(video.videoId, snapshot);
   }
+
+  // Compute avg engagement rate from initial snapshot data
+  const erVals = videos
+    .filter((v) => v.viewCount != null && v.viewCount > 0)
+    .map((v) =>
+      Math.round(
+        (((v.likeCount ?? 0) + (v.commentCount ?? 0)) / v.viewCount!) * 10000
+      ) / 100
+    );
+  const avgEngagementRate =
+    erVals.length > 0
+      ? Math.round((erVals.reduce((a, b) => a + b, 0) / erVals.length) * 100) /
+        100
+      : null;
 
   // Write the channel doc with video metadata
   const channelRef = doc(db, "tracked_channels", channelId);
@@ -180,6 +207,7 @@ export async function trackChannelWithData(
       totalViews,
       lastUpdated: firestoreNow,
       videos: videosMeta,
+      avgEngagementRate,
     },
     { merge: true }
   );
@@ -288,6 +316,7 @@ export async function getTrackedChannelData(
       likeCount: snap?.likeCount ?? null,
       commentCount: snap?.commentCount ?? null,
       vph: snap?.vph ?? null,
+      engagementRate: snap?.engagementRate ?? null,
     };
   });
 
@@ -297,6 +326,7 @@ export async function getTrackedChannelData(
     channelThumbnail: data.channelThumbnail ?? "",
     subscriberCount: data.subscriberCount ?? null,
     totalViews: data.totalViews ?? null,
+    avgEngagementRate: data.avgEngagementRate ?? null,
     videos: mergedVideos,
   };
 }

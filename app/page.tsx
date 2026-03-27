@@ -51,6 +51,7 @@ interface VideoItem {
   likeCount: number | null;
   commentCount: number | null;
   vph: number | null;
+  engagementRate: number | null;
 }
 
 interface ApiResult {
@@ -131,6 +132,11 @@ function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?:
     ? vphValues.reduce((s, v) => s + v, 0) / vphValues.length
     : null;
 
+  const erValues = videos.map((v) => v.engagementRate).filter((v): v is number => v != null);
+  const avgEr = erValues.length > 0
+    ? erValues.reduce((s, v) => s + v, 0) / erValues.length
+    : null;
+
   const sorted = vphSort
     ? [...videos].sort((a, b) => {
         const av = a.vph ?? -1, bv = b.vph ?? -1;
@@ -176,6 +182,11 @@ function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?:
                   </span>
                 )}
               </span>
+            </TableHead>
+          )}
+          {showVph && (
+            <TableHead className="w-32 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Engagement
             </TableHead>
           )}
           <TableHead className="w-36 pr-6 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -232,6 +243,30 @@ function VideoTable({ videos, showVph = true }: { videos: VideoItem[]; showVph?:
                     >
                       {formatNumber(Math.round(video.vph))}/hr
                     </span>
+                  ) : (
+                    <span className="text-muted-foreground text-sm">—</span>
+                  )}
+                </TableCell>
+              )}
+              {showVph && (
+                <TableCell className="text-right py-4">
+                  {video.engagementRate != null ? (
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span
+                        className={`text-sm font-semibold tabular-nums ${
+                          avgEr != null && video.engagementRate > avgEr
+                            ? "text-sky-400"
+                            : "text-foreground"
+                        }`}
+                      >
+                        {video.engagementRate.toFixed(2)}%
+                      </span>
+                      {avgEr != null && (
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          Avg: {avgEr.toFixed(2)}%
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-muted-foreground text-sm">—</span>
                   )}
@@ -323,7 +358,18 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Something went wrong."); return; }
-      setResult(data);
+      setResult({
+        ...data,
+        videos: (data.videos ?? []).map((v: Omit<VideoItem, "engagementRate">) => ({
+          ...v,
+          engagementRate:
+            v.viewCount != null && v.viewCount > 0
+              ? Math.round(
+                  (((v.likeCount ?? 0) + (v.commentCount ?? 0)) / v.viewCount) * 10000
+                ) / 100
+              : null,
+        })),
+      });
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -355,7 +401,7 @@ export default function Home() {
       const enriched = result.videos.map((v) => {
         const snap = snapshotMap.get(v.videoId);
         if (!snap) return v;
-        return { ...v, vph: snap.vph };
+        return { ...v, vph: snap.vph, engagementRate: snap.engagementRate };
       });
       setResult({ ...result, videos: enriched });
       setTrackState("tracked");
