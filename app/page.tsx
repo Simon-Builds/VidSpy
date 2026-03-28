@@ -230,7 +230,22 @@ function SingleVideoPulse({
   return (
     <div className="rounded-lg border border-border bg-card p-5">
       <div className="mb-4">
-        <p className="text-sm font-semibold text-foreground">Video Pulse</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-semibold text-foreground">Video Pulse</p>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger className="text-muted-foreground/50 hover:text-muted-foreground transition-colors">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+                </svg>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-[260px] text-xs">
+                <p className="font-semibold mb-1">Views Per Hour over time</p>
+                <p>Each data point shows the VPH at that snapshot: (new views since last poll) ÷ (hours elapsed). Reveals whether a video is gaining or losing momentum.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-full sm:max-w-[480px]">
           {videoTitle ?? "Select a video below"}
         </p>
@@ -457,13 +472,25 @@ function VideoTable({
       </span>
     );
 
-  const sortableHead = (col: SortKey, label: string, className: string) => (
+  const sortableHead = (col: SortKey, label: string, className: string, tooltip?: { title: string; body: string }) => (
     <TableHead
       className={`${className} cursor-pointer select-none hover:text-foreground transition-colors ${sort?.key === col ? "text-foreground" : ""}`}
       onClick={() => cycleSort(col)}
     >
       <span className="inline-flex items-center justify-end gap-1">
-        {label}
+        {tooltip ? (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger className="underline decoration-dotted underline-offset-2 cursor-help" onClick={(e) => e.stopPropagation()}>
+                {label}
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[240px] text-xs">
+                <p className="font-semibold mb-1">{tooltip.title}</p>
+                <p>{tooltip.body}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : label}
         <SortIndicator col={col} />
       </span>
     </TableHead>
@@ -481,14 +508,28 @@ function VideoTable({
           </TableHead>
           {channelId && (
             <TableHead className="w-28 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">
-              Trend
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger className="underline decoration-dotted underline-offset-2 cursor-help">Trend</TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[220px] text-xs">
+                    <p className="font-semibold mb-1">VPH Sparkline</p>
+                    <p>Each bar represents the Views Per Hour at a recorded snapshot. Shows whether this video&apos;s velocity is rising, falling, or steady over time.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </TableHead>
           )}
           {sortableHead("viewCount",     "Views",    "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
           {sortableHead("likeCount",     "Likes",    "w-24 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell")}
           {sortableHead("commentCount",  "Comments", "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell")}
-          {showVph && sortableHead("vph",            "VPH",        "w-36 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
-          {showVph && sortableHead("engagementRate", "Engagement", "w-32 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden xl:table-cell")}
+          {showVph && sortableHead("vph", "VPH", "w-36 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider", {
+            title: "Views Per Hour",
+            body: "VPH = (views at snapshot B − views at snapshot A) ÷ hours between snapshots. Measures real-time velocity, not total lifetime views.",
+          })}
+          {showVph && sortableHead("engagementRate", "Engagement", "w-32 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden xl:table-cell", {
+            title: "Engagement Rate",
+            body: "Engagement % = (likes + comments) ÷ views × 100. Averaged across all videos in the current filter.",
+          })}
           {sortableHead("publishedAt",   "Published", "w-36 pr-6 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell")}
         </TableRow>
       </TableHeader>
