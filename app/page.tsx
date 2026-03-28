@@ -513,13 +513,7 @@ function VideoTable({
 // ---------------------------------------------------------------------------
 
 export default function Home() {
-  const [activeNav, setActiveNav] = useState<NavItem>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("activeNav") as NavItem | null;
-      if (saved === "search" || saved === "tracked" || saved === "competitor") return saved;
-    }
-    return "tracked";
-  });
+  const [activeNav, setActiveNav] = useState<NavItem>("tracked");
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -544,6 +538,13 @@ export default function Home() {
 
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [competitorSearch, setCompetitorSearch] = useState("");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("activeNav") as NavItem | null;
+    if (saved === "search" || saved === "tracked" || saved === "competitor") {
+      setActiveNav(saved);
+    }
+  }, []);
 
   useEffect(() => {
     getTrackedChannels()
