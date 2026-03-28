@@ -241,7 +241,7 @@ function SingleVideoPulse({
               </TooltipTrigger>
               <TooltipContent side="right" className="max-w-[260px] text-xs">
                 <p className="font-semibold mb-1">Views Per Hour over time</p>
-                <p>Each data point shows the VPH at that snapshot: (new views since last poll) ÷ (hours elapsed). Reveals whether a video is gaining or losing momentum.</p>
+                <p>How many views this video is getting per hour, tracked over time.</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -512,8 +512,8 @@ function VideoTable({
                 <Tooltip>
                   <TooltipTrigger className="underline decoration-dotted underline-offset-2 cursor-help">Trend</TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[220px] text-xs">
-                    <p className="font-semibold mb-1">VPH Sparkline</p>
-                    <p>Each bar represents the Views Per Hour at a recorded snapshot. Shows whether this video&apos;s velocity is rising, falling, or steady over time.</p>
+                    <p className="font-semibold mb-1">Trend</p>
+                    <p>Views Per Hour tracked over time.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -524,11 +524,11 @@ function VideoTable({
           {sortableHead("commentCount",  "Comments", "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell")}
           {showVph && sortableHead("vph", "VPH", "w-36 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider", {
             title: "Views Per Hour",
-            body: "VPH = (views at snapshot B − views at snapshot A) ÷ hours between snapshots. Measures real-time velocity, not total lifetime views.",
+            body: "How many views this video got in the last hour.",
           })}
           {showVph && sortableHead("engagementRate", "Engagement", "w-32 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden xl:table-cell", {
             title: "Engagement Rate",
-            body: "Engagement % = (likes + comments) ÷ views × 100. Averaged across all videos in the current filter.",
+            body: "Likes and comments as a percentage of total views.",
           })}
           {sortableHead("publishedAt",   "Published", "w-36 pr-6 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell")}
         </TableRow>
