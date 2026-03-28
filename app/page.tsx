@@ -544,7 +544,22 @@ export default function Home() {
     if (saved === "search" || saved === "tracked" || saved === "competitor") {
       setActiveNav(saved);
     }
+    const savedInput = sessionStorage.getItem("searchInput");
+    const savedResult = sessionStorage.getItem("searchResult");
+    if (savedInput) setInput(savedInput);
+    if (savedResult) {
+      try { setResult(JSON.parse(savedResult)); } catch { /* ignore */ }
+    }
   }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem("searchInput", input);
+  }, [input]);
+
+  useEffect(() => {
+    if (result) sessionStorage.setItem("searchResult", JSON.stringify(result));
+    else sessionStorage.removeItem("searchResult");
+  }, [result]);
 
   useEffect(() => {
     getTrackedChannels()
