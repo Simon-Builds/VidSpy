@@ -513,7 +513,13 @@ function VideoTable({
 // ---------------------------------------------------------------------------
 
 export default function Home() {
-  const [activeNav, setActiveNav] = useState<NavItem>("tracked");
+  const [activeNav, setActiveNav] = useState<NavItem>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("activeNav") as NavItem | null;
+      if (saved === "search" || saved === "tracked" || saved === "competitor") return saved;
+    }
+    return "tracked";
+  });
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1311,7 +1317,7 @@ export default function Home() {
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveNav(item.id)}
+              onClick={() => { setActiveNav(item.id); localStorage.setItem("activeNav", item.id); }}
               className={`w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-all ${
                 activeNav === item.id
                   ? "bg-white/[0.07] text-foreground border border-border"
