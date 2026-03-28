@@ -261,6 +261,39 @@ function MiniSparkline({ channelId, videoId }: { channelId: string; videoId: str
   );
 }
 
+function ChannelIconTick({
+  x, y, payload, thumbnailMap,
+}: {
+  x?: number | string; y?: number | string;
+  payload?: { value: string };
+  thumbnailMap: Map<string, string>;
+  [key: string]: unknown;
+}) {
+  if (!payload) return null;
+  const src = thumbnailMap.get(payload.value) ?? "";
+  const cx = Number(x);
+  const cy = Number(y);
+  const size = 28;
+  const clipId = `clip-ch-${payload.value.replace(/\s+/g, "-")}`;
+  return (
+    <g transform={`translate(${cx},${cy})`}>
+      <defs>
+        <clipPath id={clipId}>
+          <circle cx={0} cy={size / 2 + 6} r={size / 2} />
+        </clipPath>
+      </defs>
+      <image
+        href={src}
+        x={-size / 2}
+        y={6}
+        width={size}
+        height={size}
+        clipPath={`url(#${clipId})`}
+      />
+    </g>
+  );
+}
+
 function CompetitorTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; subscribers: number } }> }) {
   if (!active || !payload?.length) return null;
   const { name, subscribers } = payload[0].payload;
@@ -1099,8 +1132,13 @@ export default function Home() {
     .map((ch) => ({
       name: ch.channelTitle,
       subscribers: ch.subscriberCount ?? 0,
+      thumbnail: ch.channelThumbnail,
     }))
     .sort((a, b) => b.subscribers - a.subscribers);
+
+  const competitorThumbnailMap = new Map(
+    competitorChartData.map((ch) => [ch.name, ch.thumbnail])
+  );
 
   const combinedReach = competitorChartData.reduce((sum, ch) => sum + ch.subscribers, 0);
 
@@ -1141,16 +1179,15 @@ export default function Home() {
         ) : (
           <div className="flex-1 min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={competitorChartData} margin={{ top: 20, right: 20, bottom: 60, left: 20 }}>
+              <BarChart data={competitorChartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                 <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="name"
-                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                   tickLine={false}
                   axisLine={false}
-                  angle={-35}
-                  textAnchor="end"
                   interval={0}
+                  height={44}
+                  tick={(props) => <ChannelIconTick {...props} thumbnailMap={competitorThumbnailMap} />}
                 />
                 <YAxis
                   width={60}
