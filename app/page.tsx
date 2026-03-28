@@ -840,6 +840,13 @@ export default function Home() {
     }
   }
 
+  function handleClear() {
+    setResult(null);
+    setInput("");
+    setError(null);
+    setTrackState("idle");
+  }
+
   async function handleRemove(channelId: string) {
     setRemovingId(channelId);
     try {
@@ -991,8 +998,15 @@ export default function Home() {
   ) : (
     /* ── Results / loading state ── */
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="rounded-lg border border-border bg-card p-4">
+      <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
         {searchForm}
+        <button
+          onClick={handleClear}
+          className="self-start flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+          Back to search
+        </button>
       </div>
 
       {error && (
