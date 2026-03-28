@@ -1329,7 +1329,7 @@ export default function Home() {
                       onClick={() => setVideoFilter(f)}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                         videoFilter === f
-                          ? "bg-card text-foreground shadow-sm"
+                          ? "bg-primary/20 text-primary shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
@@ -1401,7 +1401,7 @@ export default function Home() {
                           onClick={() => setPublishedWithin(d)}
                           className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                             publishedWithin === d
-                              ? "bg-card text-foreground shadow-sm"
+                              ? "bg-primary/20 text-primary shadow-sm"
                               : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
