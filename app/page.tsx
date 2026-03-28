@@ -37,6 +37,8 @@ import {
   Area,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -256,6 +258,17 @@ function MiniSparkline({ channelId, videoId }: { channelId: string; videoId: str
         isAnimationActive={false}
       />
     </LineChart>
+  );
+}
+
+function CompetitorTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; subscribers: number } }> }) {
+  if (!active || !payload?.length) return null;
+  const { name, subscribers } = payload[0].payload;
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
+      <p className="text-xs font-medium text-foreground">{name}</p>
+      <p className="text-sm font-semibold text-primary">{subscribers.toLocaleString()} subscribers</p>
+    </div>
   );
 }
 
@@ -485,11 +498,15 @@ export default function Home() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [videoFilter, setVideoFilter] = useState<"all" | "videos" | "shorts">("videos");
 
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+  const [competitorSearch, setCompetitorSearch] = useState("");
+
   useEffect(() => {
     getTrackedChannels()
       .then((channels) => {
         setTrackedChannels(channels);
         if (channels.length > 0) setSelectedChannelId(channels[0].channelId);
+        setSelectedChannelIds(channels.slice(0, 5).map((c) => c.channelId));
       })
       .catch(console.error)
       .finally(() => setLoadingTracked(false));
@@ -1073,13 +1090,136 @@ export default function Home() {
   // Competitor Analysis View
   // ---------------------------------------------------------------------------
 
+  const competitorFilteredChannels = trackedChannels.filter((ch) =>
+    ch.channelTitle.toLowerCase().includes(competitorSearch.toLowerCase())
+  );
+
+  const competitorChartData = trackedChannels
+    .filter((ch) => selectedChannelIds.includes(ch.channelId))
+    .map((ch) => ({
+      name: ch.channelTitle,
+      subscribers: ch.subscriberCount ?? 0,
+    }))
+    .sort((a, b) => b.subscribers - a.subscribers);
+
+  const combinedReach = competitorChartData.reduce((sum, ch) => sum + ch.subscribers, 0);
+
   const CompetitorView = (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] text-center gap-4">
-      <div className="rounded-2xl bg-primary/10 p-5 ring-1 ring-primary/20">
-        <Swords className="w-10 h-10 text-primary/60" />
+    <div className="flex h-[calc(100vh-4rem)] gap-0">
+      {/* Left panel — Chart (75%) */}
+      <div className="flex-[3] flex flex-col gap-4 pr-6 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-primary/10 p-2 ring-1 ring-primary/20">
+            <Swords className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Subscriber Comparison</h2>
+            <p className="text-xs text-muted-foreground">
+              {selectedChannelIds.length} channel{selectedChannelIds.length !== 1 ? "s" : ""} selected
+            </p>
+          </div>
+        </div>
+
+        {/* Combined Reach stat */}
+        {competitorChartData.length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-4 w-fit">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Combined Reach</p>
+            <p className="text-2xl font-bold text-foreground tracking-tight leading-none">
+              {formatNumber(combinedReach)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">total subscribers</p>
+          </div>
+        )}
+
+        {/* Chart or empty state */}
+        {competitorChartData.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
+            <Users className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">Select channels from the right panel to compare</p>
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={competitorChartData} margin={{ top: 20, right: 20, bottom: 60, left: 20 }}>
+                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                  tickLine={false}
+                  axisLine={false}
+                  angle={-35}
+                  textAnchor="end"
+                  interval={0}
+                />
+                <YAxis
+                  width={60}
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v: number) => formatNumber(v)}
+                />
+                <Tooltip
+                  content={<CompetitorTooltip />}
+                  cursor={{ fill: "var(--primary)", opacity: 0.06 }}
+                />
+                <Bar dataKey="subscribers" fill="var(--primary)" radius={[4, 4, 0, 0]} maxBarSize={80} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
-      <h2 className="text-2xl font-bold tracking-tight text-foreground">Competitor Analysis</h2>
-      <p className="text-sm text-muted-foreground">Coming soon.</p>
+
+      {/* Right panel — Channel selector (25%) */}
+      <div className="flex-[1] border-l border-border pl-6 flex flex-col">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Channels</h3>
+        <Input
+          placeholder="Filter channels..."
+          value={competitorSearch}
+          onChange={(e) => setCompetitorSearch(e.target.value)}
+          className="h-8 text-xs mb-3"
+        />
+        <div className="max-h-[calc(100vh-250px)] overflow-y-auto -mr-2 pr-2 space-y-0.5">
+          {competitorFilteredChannels.length === 0 && (
+            <p className="text-xs text-muted-foreground py-4 text-center">
+              {trackedChannels.length === 0 ? "No tracked channels yet." : "No channels match your filter."}
+            </p>
+          )}
+          {competitorFilteredChannels.map((ch) => {
+            const selected = selectedChannelIds.includes(ch.channelId);
+            return (
+              <button
+                key={ch.channelId}
+                onClick={() =>
+                  setSelectedChannelIds((prev) =>
+                    selected ? prev.filter((id) => id !== ch.channelId) : [...prev, ch.channelId]
+                  )
+                }
+                className={`w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors ${
+                  selected
+                    ? "bg-primary/10 border border-primary/20"
+                    : "hover:bg-white/[0.04] border border-transparent"
+                }`}
+              >
+                <Avatar className="h-7 w-7 shrink-0">
+                  <AvatarImage src={ch.channelThumbnail} alt={ch.channelTitle} />
+                  <AvatarFallback className="text-[10px]">{ch.channelTitle.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <span className="flex-1 min-w-0 text-xs font-medium text-foreground truncate">
+                  {ch.channelTitle}
+                </span>
+                <div
+                  className={`h-4 w-4 rounded shrink-0 flex items-center justify-center transition-colors ${
+                    selected ? "bg-primary border border-primary" : "border border-border bg-transparent"
+                  }`}
+                >
+                  {selected && <Check className="h-3 w-3 text-primary-foreground" />}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 
