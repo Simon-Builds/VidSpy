@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search,
   Loader2,
@@ -587,6 +587,10 @@ export default function Home() {
   const [selectedMetric, setSelectedMetric] = useState<"VPH" | "VIEWS" | "VIDEOS" | "SUBS">("VPH");
   const [selectedType, setSelectedType] = useState<"TOTAL" | "LONG" | "SHORTS">("TOTAL");
 
+  const [hydrated, setHydrated] = useState(false);
+  const initialFetch = useRef(true);
+
+  // Restore all persisted state on mount
   useEffect(() => {
     const saved = localStorage.getItem("activeNav") as NavItem | null;
     if (saved === "search" || saved === "tracked" || saved === "competitor") {
@@ -598,22 +602,42 @@ export default function Home() {
     if (savedResult) {
       try { setResult(JSON.parse(savedResult)); } catch { /* ignore */ }
     }
+    const savedFilter = sessionStorage.getItem("videoFilter") as "all" | "videos" | "shorts" | null;
+    if (savedFilter === "all" || savedFilter === "videos" || savedFilter === "shorts") {
+      setVideoFilter(savedFilter);
+    }
+    setHydrated(true);
   }, []);
 
+  // Persist state changes (skip until hydration render is complete)
   useEffect(() => {
+    if (!hydrated) return;
     sessionStorage.setItem("searchInput", input);
-  }, [input]);
+  }, [hydrated, input]);
 
   useEffect(() => {
+    if (!hydrated) return;
+    sessionStorage.setItem("videoFilter", videoFilter);
+  }, [hydrated, videoFilter]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (selectedChannelId) sessionStorage.setItem("selectedChannelId", selectedChannelId);
+  }, [hydrated, selectedChannelId]);
+
+  useEffect(() => {
+    if (!hydrated) return;
     if (result) sessionStorage.setItem("searchResult", JSON.stringify(result));
     else sessionStorage.removeItem("searchResult");
-  }, [result]);
+  }, [hydrated, result]);
 
   useEffect(() => {
     getTrackedChannelsWithMetrics()
       .then((channels) => {
         setTrackedChannels(channels);
-        if (channels.length > 0) setSelectedChannelId(channels[0].channelId);
+        const savedChannel = sessionStorage.getItem("selectedChannelId");
+        const match = savedChannel && channels.some((c) => c.channelId === savedChannel);
+        setSelectedChannelId(match ? savedChannel : (channels[0]?.channelId ?? null));
         setSelectedChannelIds(channels.slice(0, 5).map((c) => c.channelId));
       })
       .catch(console.error)
@@ -638,12 +662,12 @@ export default function Home() {
     fetchVideoHistory(selectedChannelId, videoId);
   }, [selectedChannelId, fetchVideoHistory]);
 
-  const fetchChannelData = useCallback(async (channelId: string) => {
+  const fetchChannelData = useCallback(async (channelId: string, keepFilter = false) => {
     setLoadingSelected(true);
     setSelectedData(null);
     setSelectedVideoId(null);
     setVideoHistory([]);
-    setVideoFilter("videos");
+    if (!keepFilter) setVideoFilter("videos");
     try {
       const cached = await getTrackedChannelData(channelId);
       if (!cached) return;
@@ -674,7 +698,10 @@ export default function Home() {
   }, [fetchVideoHistory]);
 
   useEffect(() => {
-    if (selectedChannelId) fetchChannelData(selectedChannelId);
+    if (selectedChannelId) {
+      fetchChannelData(selectedChannelId, initialFetch.current);
+      initialFetch.current = false;
+    }
   }, [selectedChannelId, fetchChannelData]);
 
   useEffect(() => {
