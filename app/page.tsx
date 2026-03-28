@@ -718,8 +718,8 @@ export default function Home() {
   }
 
   const navItems: { id: NavItem; label: string; icon: React.ReactNode }[] = [
-    { id: "tracked",    label: "Tracked Channels",    icon: <Radio className="h-4 w-4" /> },
     { id: "search",     label: "Search",              icon: <Search className="h-4 w-4" /> },
+    { id: "tracked",    label: "Tracked Channels",    icon: <Radio className="h-4 w-4" /> },
     { id: "competitor", label: "Competitor Analysis", icon: <Swords className="h-4 w-4" /> },
   ];
 
