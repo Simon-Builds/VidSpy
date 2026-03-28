@@ -133,6 +133,8 @@ function getChannelValue(
     return ch.avgViewsTotal ?? null;
   }
   if (metric === "SUBS") return ch.subscriberCount ?? null;
+  if (type === "LONG")   return ch.videosLast30DaysLong   ?? null;
+  if (type === "SHORTS") return ch.videosLast30DaysShort  ?? null;
   return ch.videosLast30Days ?? null;
 }
 
@@ -1633,7 +1635,7 @@ export default function Home() {
     selectedType === "TOTAL" ? "Total" :
     selectedType === "LONG" ? "Long-form" : "Shorts";
 
-  const typeDisabled = selectedMetric === "VIDEOS" || selectedMetric === "SUBS";
+  const typeDisabled = selectedMetric === "SUBS";
 
   const competitorHeading =
     typeDisabled

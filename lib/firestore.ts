@@ -33,6 +33,8 @@ export interface TrackedChannel {
   avgViewsLong?: number | null;
   avgViewsShort?: number | null;
   videosLast30Days?: number | null;
+  videosLast30DaysLong?: number | null;
+  videosLast30DaysShort?: number | null;
 }
 
 export interface VideoSnapshot {
@@ -343,9 +345,9 @@ export async function getTrackedChannelsWithMetrics(): Promise<TrackedChannel[]>
         avgViewsTotal: avg(withViews.map((v) => v.viewCount!)),
         avgViewsLong: avg(withViews.filter((v) => !v.isShort).map((v) => v.viewCount!)),
         avgViewsShort: avg(withViews.filter((v) => v.isShort).map((v) => v.viewCount!)),
-        videosLast30Days: videosMeta.filter(
-          (v) => new Date(v.publishedAt) >= thirtyDaysAgo
-        ).length,
+        videosLast30Days: videosMeta.filter((v) => new Date(v.publishedAt) >= thirtyDaysAgo).length,
+        videosLast30DaysLong: videosMeta.filter((v) => new Date(v.publishedAt) >= thirtyDaysAgo && !v.isShort).length,
+        videosLast30DaysShort: videosMeta.filter((v) => new Date(v.publishedAt) >= thirtyDaysAgo && v.isShort).length,
       } satisfies TrackedChannel;
     })
   );
