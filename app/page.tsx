@@ -1406,25 +1406,90 @@ export default function Home() {
       ? `${metricLabel} Comparison`
       : `${metricLabel} Comparison (${typeLabel} content)`;
 
+  const [competitorPanelOpen, setCompetitorPanelOpen] = useState(false);
+
+  const CompetitorChannelList = (
+    <>
+      <Input
+        placeholder="Filter channels..."
+        value={competitorSearch}
+        onChange={(e) => setCompetitorSearch(e.target.value)}
+        className="h-8 text-xs mb-3"
+      />
+      <div className="max-h-[calc(100vh-250px)] overflow-y-auto -mr-2 pr-2 space-y-0.5">
+        {competitorFilteredChannels.length === 0 && (
+          <p className="text-xs text-muted-foreground py-4 text-center">
+            {trackedChannels.length === 0 ? "No tracked channels yet." : "No channels match your filter."}
+          </p>
+        )}
+        {competitorFilteredChannels.map((ch) => {
+          const selected = selectedChannelIds.includes(ch.channelId);
+          return (
+            <button
+              key={ch.channelId}
+              onClick={() =>
+                setSelectedChannelIds((prev) =>
+                  selected ? prev.filter((id) => id !== ch.channelId) : [...prev, ch.channelId]
+                )
+              }
+              className={`w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors ${
+                selected
+                  ? "bg-primary/10 border border-primary/20"
+                  : "hover:bg-white/[0.04] border border-transparent"
+              }`}
+            >
+              <Avatar className="h-7 w-7 shrink-0">
+                <AvatarImage src={ch.channelThumbnail} alt={ch.channelTitle} />
+                <AvatarFallback className="text-[10px]">{ch.channelTitle.charAt(0)}</AvatarFallback>
+              </Avatar>
+              <span className="flex-1 min-w-0 text-xs font-medium text-foreground truncate">
+                {ch.channelTitle}
+              </span>
+              <div
+                className={`h-4 w-4 rounded shrink-0 flex items-center justify-center transition-colors ${
+                  selected ? "bg-primary border border-primary" : "border border-border bg-transparent"
+                }`}
+              >
+                {selected && <Check className="h-3 w-3 text-primary-foreground" />}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+
   const CompetitorView = (
-    <div className="flex h-[calc(100vh-4rem)] gap-0">
-      {/* Left panel — Chart (75%) */}
-      <div className="flex-[3] flex flex-col gap-4 pr-6 overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-4rem)] gap-4 lg:gap-0">
+      {/* Chart panel */}
+      <div className="flex-1 lg:flex-[3] flex flex-col gap-4 lg:pr-6 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-primary/10 p-2 ring-1 ring-primary/20">
-            <Swords className="h-5 w-5 text-primary" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-primary/10 p-2 ring-1 ring-primary/20 shrink-0">
+              <Swords className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base md:text-lg font-semibold text-foreground truncate">{competitorHeading}</h2>
+              <p className="text-xs text-muted-foreground">
+                {selectedChannelIds.length} channel{selectedChannelIds.length !== 1 ? "s" : ""} selected
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">{competitorHeading}</h2>
-            <p className="text-xs text-muted-foreground">
-              {selectedChannelIds.length} channel{selectedChannelIds.length !== 1 ? "s" : ""} selected
-            </p>
-          </div>
+          {/* Mobile: button to open channel selector */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="lg:hidden h-8 text-xs gap-1.5 shrink-0"
+            onClick={() => setCompetitorPanelOpen(true)}
+          >
+            <Users className="h-3.5 w-3.5" />
+            Channels
+          </Button>
         </div>
 
         {/* Metric Selector Toolbar */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4">
           {/* Left: Content Type segmented control */}
           <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 border border-border">
             {(["TOTAL", "LONG", "SHORTS"] as const).map((t) => (
@@ -1432,7 +1497,7 @@ export default function Home() {
                 key={t}
                 onClick={() => setSelectedType(t)}
                 disabled={typeDisabled}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                className={`px-2.5 md:px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                   selectedType === t && !typeDisabled
                     ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -1462,14 +1527,17 @@ export default function Home() {
 
         {/* Chart or empty state */}
         {competitorChartData.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
+          <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center text-center gap-3">
             <Users className="h-8 w-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">Select channels from the right panel to compare</p>
+            <p className="text-sm text-muted-foreground">
+              <span className="hidden lg:inline">Select channels from the right panel to compare</span>
+              <span className="lg:hidden">Tap &quot;Channels&quot; to select channels to compare</span>
+            </p>
           </div>
         ) : (
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-[300px] lg:min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={competitorChartData} margin={{ top: 28, right: 20, bottom: 20, left: 20 }}>
+              <BarChart data={competitorChartData} margin={{ top: 28, right: 10, bottom: 20, left: 10 }}>
                 <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="name"
@@ -1480,7 +1548,7 @@ export default function Home() {
                   tick={(props) => <ChannelIconTick {...props} thumbnailMap={competitorThumbnailMap} />}
                 />
                 <YAxis
-                  width={60}
+                  width={50}
                   tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                   tickLine={false}
                   axisLine={false}
@@ -1515,56 +1583,35 @@ export default function Home() {
         )}
       </div>
 
-      {/* Right panel — Channel selector (25%) */}
-      <div className="flex-[1] border-l border-border pl-6 flex flex-col">
+      {/* Right panel — Channel selector (desktop only) */}
+      <div className="hidden lg:flex flex-[1] border-l border-border pl-6 flex-col">
         <h3 className="text-sm font-semibold text-foreground mb-3">Channels</h3>
-        <Input
-          placeholder="Filter channels..."
-          value={competitorSearch}
-          onChange={(e) => setCompetitorSearch(e.target.value)}
-          className="h-8 text-xs mb-3"
-        />
-        <div className="max-h-[calc(100vh-250px)] overflow-y-auto -mr-2 pr-2 space-y-0.5">
-          {competitorFilteredChannels.length === 0 && (
-            <p className="text-xs text-muted-foreground py-4 text-center">
-              {trackedChannels.length === 0 ? "No tracked channels yet." : "No channels match your filter."}
-            </p>
-          )}
-          {competitorFilteredChannels.map((ch) => {
-            const selected = selectedChannelIds.includes(ch.channelId);
-            return (
-              <button
-                key={ch.channelId}
-                onClick={() =>
-                  setSelectedChannelIds((prev) =>
-                    selected ? prev.filter((id) => id !== ch.channelId) : [...prev, ch.channelId]
-                  )
-                }
-                className={`w-full flex items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors ${
-                  selected
-                    ? "bg-primary/10 border border-primary/20"
-                    : "hover:bg-white/[0.04] border border-transparent"
-                }`}
-              >
-                <Avatar className="h-7 w-7 shrink-0">
-                  <AvatarImage src={ch.channelThumbnail} alt={ch.channelTitle} />
-                  <AvatarFallback className="text-[10px]">{ch.channelTitle.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <span className="flex-1 min-w-0 text-xs font-medium text-foreground truncate">
-                  {ch.channelTitle}
-                </span>
-                <div
-                  className={`h-4 w-4 rounded shrink-0 flex items-center justify-center transition-colors ${
-                    selected ? "bg-primary border border-primary" : "border border-border bg-transparent"
-                  }`}
-                >
-                  {selected && <Check className="h-3 w-3 text-primary-foreground" />}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        {CompetitorChannelList}
       </div>
+
+      {/* Mobile channel selector sheet */}
+      {competitorPanelOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setCompetitorPanelOpen(false)}
+          />
+          <div className="absolute bottom-0 left-0 right-0 max-h-[70vh] bg-card border-t border-border rounded-t-xl flex flex-col animate-in slide-in-from-bottom duration-200">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground">Select Channels</h3>
+              <button
+                onClick={() => setCompetitorPanelOpen(false)}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-4 py-3 flex-1 overflow-y-auto">
+              {CompetitorChannelList}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
