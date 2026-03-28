@@ -106,7 +106,7 @@ function formatNumber(n: number | null) {
 
 function getChannelValue(
   ch: TrackedChannel,
-  metric: "VPH" | "VIEWS" | "VIDEOS",
+  metric: "VPH" | "VIEWS" | "VIDEOS" | "SUBS",
   type: "TOTAL" | "LONG" | "SHORTS",
 ): number | null {
   if (metric === "VPH") {
@@ -119,10 +119,11 @@ function getChannelValue(
     if (type === "SHORTS") return ch.avgViewsShort  ?? null;
     return ch.avgViewsTotal ?? null;
   }
+  if (metric === "SUBS") return ch.subscriberCount ?? null;
   return ch.videosLast30Days ?? null;
 }
 
-function getFormatter(metric: "VPH" | "VIEWS" | "VIDEOS") {
+function getFormatter(metric: "VPH" | "VIEWS" | "VIDEOS" | "SUBS") {
   return (v: unknown): string => {
     const n = typeof v === "number" ? v : null;
     const base = formatNumber(n);
@@ -583,7 +584,7 @@ export default function Home() {
 
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [competitorSearch, setCompetitorSearch] = useState("");
-  const [selectedMetric, setSelectedMetric] = useState<"VPH" | "VIEWS" | "VIDEOS">("VPH");
+  const [selectedMetric, setSelectedMetric] = useState<"VPH" | "VIEWS" | "VIDEOS" | "SUBS">("VPH");
   const [selectedType, setSelectedType] = useState<"TOTAL" | "LONG" | "SHORTS">("TOTAL");
 
   useEffect(() => {
@@ -1227,15 +1228,18 @@ export default function Home() {
 
   const metricLabel =
     selectedMetric === "VPH" ? "Avg VPH" :
-    selectedMetric === "VIEWS" ? "Avg Views" : "Videos / 30d";
+    selectedMetric === "VIEWS" ? "Avg Views" :
+    selectedMetric === "SUBS" ? "Subscribers" : "Videos / 30d";
 
   const typeLabel =
     selectedType === "TOTAL" ? "Total" :
     selectedType === "LONG" ? "Long-form" : "Shorts";
 
+  const typeDisabled = selectedMetric === "VIDEOS" || selectedMetric === "SUBS";
+
   const competitorHeading =
-    selectedMetric === "VIDEOS"
-      ? "Videos / 30d Comparison"
+    typeDisabled
+      ? `${metricLabel} Comparison`
       : `${metricLabel} Comparison (${typeLabel} content)`;
 
   const CompetitorView = (
@@ -1263,9 +1267,9 @@ export default function Home() {
               <button
                 key={t}
                 onClick={() => setSelectedType(t)}
-                disabled={selectedMetric === "VIDEOS"}
+                disabled={typeDisabled}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                  selectedType === t && selectedMetric !== "VIDEOS"
+                  selectedType === t && !typeDisabled
                     ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
@@ -1278,7 +1282,7 @@ export default function Home() {
           {/* Right: Metric Select dropdown */}
           <Select
             value={selectedMetric}
-            onValueChange={(v) => setSelectedMetric(v as "VPH" | "VIEWS" | "VIDEOS")}
+            onValueChange={(v) => setSelectedMetric(v as "VPH" | "VIEWS" | "VIDEOS" | "SUBS")}
           >
             <SelectTrigger className="h-8 w-[140px] text-xs">
               <SelectValue />
@@ -1286,6 +1290,7 @@ export default function Home() {
             <SelectContent>
               <SelectItem value="VPH">Avg VPH</SelectItem>
               <SelectItem value="VIEWS">Avg Views</SelectItem>
+              <SelectItem value="SUBS">Subscribers</SelectItem>
               <SelectItem value="VIDEOS">Videos / 30d</SelectItem>
             </SelectContent>
           </Select>
