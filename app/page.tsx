@@ -1869,7 +1869,7 @@ export default function Home() {
           </div>
           <span className="font-mono tracking-tighter">
             <span className="text-sm font-bold text-foreground">VID</span>
-            <span className="text-sm font-normal text-primary">SPY</span>
+            <span className="text-sm font-bold text-primary">SPY</span>
           </span>
         </div>
         <div className="w-10" />
@@ -1895,7 +1895,7 @@ export default function Home() {
               </div>
               <span className="font-mono tracking-tighter drop-shadow-[0_0_10px_rgba(155,110,255,0.2)]">
                 <span className="text-sm font-bold text-foreground">VID</span>
-                <span className="text-sm font-normal text-primary">SPY</span>
+                <span className="text-sm font-bold text-primary">SPY</span>
               </span>
             </div>
             <button
@@ -1996,7 +1996,7 @@ export default function Home() {
                 </div>
                 <span className="font-mono tracking-tighter">
                   <span className="text-sm font-bold text-foreground">VID</span>
-                  <span className="text-sm font-normal text-primary">SPY</span>
+                  <span className="text-sm font-bold text-primary">SPY</span>
                 </span>
               </div>
               <button
