@@ -1511,8 +1511,7 @@ export default function Home() {
               <Zap className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground leading-none">Smart Polling</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">Hourly · 30-day window</p>
+              <p className="text-xs font-medium text-foreground leading-none">VidMetrics</p>
             </div>
             <MoreHorizontal className="h-4 w-4 text-muted-foreground/50 shrink-0" />
           </div>
