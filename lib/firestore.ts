@@ -301,6 +301,59 @@ export async function getTrackedChannels(): Promise<TrackedChannel[]> {
 }
 
 /**
+ * Return all tracked channels with computed aggregate metrics.
+ * Fetches latest snapshots per channel and computes avgVph, avgViews,
+ * and videosLast30Days from the existing video data.
+ */
+export async function getTrackedChannelsWithMetrics(): Promise<TrackedChannel[]> {
+  const snap = await getDocs(collection(db, "tracked_channels"));
+
+  const avg = (nums: number[]): number | null =>
+    nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const channels = await Promise.all(
+    snap.docs.map(async (d) => {
+      const data = d.data();
+      const videosMeta: VideoMeta[] = data.videos ?? [];
+      const snapshots = await getLatestSnapshotsForChannel(d.id);
+
+      // Merge metadata with latest snapshot data
+      const merged = videosMeta.map((meta) => {
+        const s = snapshots.get(meta.videoId);
+        return {
+          isShort: meta.isShort ?? false,
+          publishedAt: meta.publishedAt,
+          vph: s?.vph ?? null,
+          viewCount: s?.viewCount ?? null,
+        };
+      });
+
+      const withVph = merged.filter((v) => v.vph != null);
+      const withViews = merged.filter((v) => v.viewCount != null);
+
+      return {
+        channelId: d.id,
+        ...(data as Omit<TrackedChannel, "channelId">),
+        avgVphTotal: avg(withVph.map((v) => v.vph!)),
+        avgVphLong: avg(withVph.filter((v) => !v.isShort).map((v) => v.vph!)),
+        avgVphShort: avg(withVph.filter((v) => v.isShort).map((v) => v.vph!)),
+        avgViewsTotal: avg(withViews.map((v) => v.viewCount!)),
+        avgViewsLong: avg(withViews.filter((v) => !v.isShort).map((v) => v.viewCount!)),
+        avgViewsShort: avg(withViews.filter((v) => v.isShort).map((v) => v.viewCount!)),
+        videosLast30Days: videosMeta.filter(
+          (v) => new Date(v.publishedAt) >= thirtyDaysAgo
+        ).length,
+      } satisfies TrackedChannel;
+    })
+  );
+
+  return channels;
+}
+
+/**
  * Return the latest snapshot for every video in a channel's snapshots
  * sub-collection, keyed by videoId.
  */

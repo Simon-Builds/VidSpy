@@ -56,6 +56,7 @@ import {
   trackChannelWithData,
   removeTrackedChannel,
   getTrackedChannels,
+  getTrackedChannelsWithMetrics,
   getTrackedChannelData,
   getVideoHistory,
   type TrackedChannel,
@@ -100,7 +101,7 @@ function formatNumber(n: number | null) {
   if (n == null) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
+  return Math.round(n).toLocaleString();
 }
 
 function getChannelValue(
@@ -608,7 +609,7 @@ export default function Home() {
   }, [result]);
 
   useEffect(() => {
-    getTrackedChannels()
+    getTrackedChannelsWithMetrics()
       .then((channels) => {
         setTrackedChannels(channels);
         if (channels.length > 0) setSelectedChannelId(channels[0].channelId);
@@ -759,7 +760,7 @@ export default function Home() {
       });
       setResult({ ...result, videos: enriched });
       setTrackState("tracked");
-      const updated = await getTrackedChannels();
+      const updated = await getTrackedChannelsWithMetrics();
       setTrackedChannels(updated);
       setSelectedChannelId(result.channelId);
     } catch (err) {
