@@ -1733,7 +1733,7 @@ export default function Home() {
                 disabled={typeDisabled}
                 className={`px-2.5 md:px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                   selectedType === t && !typeDisabled
-                    ? "bg-card text-foreground shadow-sm"
+                    ? "bg-primary/20 text-primary shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
