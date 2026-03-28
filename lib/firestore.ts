@@ -43,6 +43,8 @@ export interface VideoMeta {
   title: string;
   thumbnail: string;
   publishedAt: string;
+  durationSeconds?: number | null;
+  isShort?: boolean;
 }
 
 /** Mutable per-video polling state stored in the video_states sub-collection. */
@@ -89,6 +91,8 @@ export interface TrackedChannelData {
     commentCount: number | null;
     vph: number | null;
     engagementRate: number | null;
+    durationSeconds: number | null;
+    isShort: boolean;
   }[];
 }
 
@@ -143,6 +147,8 @@ export interface TrackVideoInput {
   viewCount: number | null;
   likeCount: number | null;
   commentCount: number | null;
+  durationSeconds?: number | null;
+  isShort?: boolean;
 }
 
 export async function trackChannelWithData(
@@ -170,6 +176,8 @@ export async function trackChannelWithData(
       title: video.title,
       thumbnail: video.thumbnail,
       publishedAt: video.publishedAt,
+      durationSeconds: video.durationSeconds ?? null,
+      isShort: video.isShort ?? false,
     });
 
     if (video.viewCount == null) continue;
@@ -348,6 +356,8 @@ export async function getTrackedChannelData(
                 10000
             ) / 100
           : (snap?.engagementRate ?? null),
+      durationSeconds: meta.durationSeconds ?? null,
+      isShort: meta.isShort ?? false,
     };
   });
 

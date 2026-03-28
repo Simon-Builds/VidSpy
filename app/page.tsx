@@ -65,6 +65,8 @@ interface VideoItem {
   commentCount: number | null;
   vph: number | null;
   engagementRate: number | null;
+  durationSeconds: number | null;
+  isShort: boolean;
 }
 
 interface ApiResult {
@@ -96,6 +98,10 @@ function formatDate(iso: string) {
     month: "short",
     day: "numeric",
   });
+}
+
+function isShort(v: { isShort: boolean }): boolean {
+  return v.isShort;
 }
 
 function formatTime(d: Date) {
@@ -420,6 +426,7 @@ export default function Home() {
   const [trackedChannels, setTrackedChannels] = useState<TrackedChannel[]>([]);
   const [loadingTracked, setLoadingTracked] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [selectedData, setSelectedData] = useState<ApiResult | null>(null);
@@ -429,6 +436,7 @@ export default function Home() {
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
   const [videoHistory, setVideoHistory] = useState<VideoHistoryPoint[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [videoFilter, setVideoFilter] = useState<"all" | "videos" | "shorts">("videos");
 
   useEffect(() => {
     getTrackedChannels()
@@ -463,6 +471,7 @@ export default function Home() {
     setSelectedData(null);
     setSelectedVideoId(null);
     setVideoHistory([]);
+    setVideoFilter("videos");
     try {
       const cached = await getTrackedChannelData(channelId);
       if (!cached) return;
@@ -496,6 +505,24 @@ export default function Home() {
     if (selectedChannelId) fetchChannelData(selectedChannelId);
   }, [selectedChannelId, fetchChannelData]);
 
+  useEffect(() => {
+    if (!selectedChannelId || !selectedData) return;
+    setSelectedVideoId(null);
+    setVideoHistory([]);
+    const filtered =
+      videoFilter === "all"    ? selectedData.videos :
+      videoFilter === "shorts" ? selectedData.videos.filter(isShort) :
+                                 selectedData.videos.filter((v) => !isShort(v));
+    const top = filtered
+      .filter((v) => v.vph != null)
+      .sort((a, b) => (b.vph ?? 0) - (a.vph ?? 0))[0];
+    if (top) {
+      setSelectedVideoId(top.videoId);
+      fetchVideoHistory(selectedChannelId, top.videoId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoFilter]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
@@ -515,6 +542,8 @@ export default function Home() {
         ...data,
         videos: (data.videos ?? []).map((v: Omit<VideoItem, "engagementRate">) => ({
           ...v,
+          durationSeconds: v.durationSeconds ?? null,
+          isShort: v.isShort ?? false,
           engagementRate:
             v.viewCount != null && v.viewCount > 0
               ? Math.round(
@@ -549,6 +578,8 @@ export default function Home() {
           viewCount: v.viewCount,
           likeCount: v.likeCount,
           commentCount: v.commentCount,
+          durationSeconds: v.durationSeconds ?? null,
+          isShort: v.isShort ?? false,
         }))
       );
       const enriched = result.videos.map((v) => {
@@ -828,6 +859,13 @@ export default function Home() {
             </div>
 
             {/* Stat cards — reference image style */}
+            {(() => {
+              const filteredVideos =
+                videoFilter === "all"    ? selectedData.videos :
+                videoFilter === "shorts" ? selectedData.videos.filter(isShort) :
+                                           selectedData.videos.filter((v) => !isShort(v));
+              const filterLabel = videoFilter === "all" ? "last 30 days" : videoFilter === "shorts" ? "shorts" : "videos";
+              return (
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
               <StatCard
                 label="Subscribers"
@@ -839,7 +877,7 @@ export default function Home() {
                 label="Avg Views / Video"
                 icon={<Eye className="h-4 w-4" />}
                 value={(() => {
-                  const withViews = selectedData.videos.filter(
+                  const withViews = filteredVideos.filter(
                     (v) => v.viewCount != null
                   );
                   if (!withViews.length) return "—";
@@ -848,48 +886,77 @@ export default function Home() {
                     withViews.length;
                   return formatNumber(Math.round(avg));
                 })()}
-                description="per video (last 30 days)"
+                description={`per video (${filterLabel})`}
               />
               <StatCard
                 label="Videos / 30 days"
                 icon={<BarChart2 className="h-4 w-4" />}
-                value={String(selectedData.videos.length)}
-                description="recent uploads"
+                value={String(filteredVideos.length)}
+                description={`recent ${filterLabel}`}
               />
               <StatCard
                 label="Avg VPH"
                 icon={<Zap className="h-4 w-4" />}
                 value={(() => {
-                  const vals = selectedData.videos
+                  const vals = filteredVideos
                     .map((v) => v.vph)
                     .filter((v): v is number => v != null);
                   if (!vals.length) return "—";
                   const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
                   return `${formatNumber(Math.round(avg))}/hr`;
                 })()}
-                description="channel speed"
+                description={`${filterLabel} speed`}
               />
             </div>
+              );
+            })()}
 
-            {/* Single Video Pulse */}
-            <SingleVideoPulse
-              history={videoHistory}
-              loading={loadingHistory}
-              videoTitle={
-                selectedVideoId
-                  ? (selectedData.videos.find((v) => v.videoId === selectedVideoId)?.title ?? null)
-                  : null
-              }
-            />
+            {/* Content-type tabs */}
+            {(() => {
+              const filteredVideos =
+                videoFilter === "all"    ? selectedData.videos :
+                videoFilter === "shorts" ? selectedData.videos.filter(isShort) :
+                                           selectedData.videos.filter((v) => !isShort(v));
+              return (
+                <>
+                  <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 w-fit border border-border">
+                    {(["videos", "shorts", "all"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setVideoFilter(f)}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          videoFilter === f
+                            ? "bg-card text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {f === "all" ? "All" : f === "shorts" ? "Shorts" : "Videos"}
+                      </button>
+                    ))}
+                  </div>
 
-            {/* Video table */}
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
-              <VideoTable
-                videos={selectedData.videos}
-                selectedVideoId={selectedVideoId}
-                onVideoSelect={handleVideoSelect}
-              />
-            </div>
+                  {/* Single Video Pulse */}
+                  <SingleVideoPulse
+                    history={videoHistory}
+                    loading={loadingHistory}
+                    videoTitle={
+                      selectedVideoId
+                        ? (filteredVideos.find((v) => v.videoId === selectedVideoId)?.title ?? null)
+                        : null
+                    }
+                  />
+
+                  {/* Video table */}
+                  <div className="rounded-lg border border-border bg-card overflow-hidden">
+                    <VideoTable
+                      videos={filteredVideos}
+                      selectedVideoId={selectedVideoId}
+                      onVideoSelect={handleVideoSelect}
+                    />
+                  </div>
+                </>
+              );
+            })()}
 
             {/* VPH legend */}
             <p className="text-xs text-muted-foreground/60 px-1">
@@ -938,7 +1005,7 @@ export default function Home() {
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0 transition-opacity"
-                    onClick={(e) => { e.stopPropagation(); handleRemove(ch.channelId); }}
+                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(ch.channelId); }}
                     disabled={removingId === ch.channelId}
                   >
                     {removingId === ch.channelId
@@ -1024,6 +1091,44 @@ export default function Home() {
       <main className="flex-1 px-8 py-8 overflow-auto bg-background">
         {activeNav === "search" ? SearchView : activeNav === "competitor" ? CompetitorView : TrackedView}
       </main>
+
+      {/* Delete confirmation modal */}
+      {confirmDeleteId && (() => {
+        const ch = trackedChannels.find((c) => c.channelId === confirmDeleteId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-card border border-border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4">
+              <h2 className="text-base font-semibold text-foreground mb-1">Remove channel?</h2>
+              <p className="text-sm text-muted-foreground mb-6">
+                <span className="text-foreground font-medium">{ch?.channelTitle}</span> will be removed from your tracked channels. This cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDeleteId(null)}
+                  disabled={removingId === confirmDeleteId}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={removingId === confirmDeleteId}
+                  onClick={async () => {
+                    await handleRemove(confirmDeleteId);
+                    setConfirmDeleteId(null);
+                  }}
+                >
+                  {removingId === confirmDeleteId
+                    ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />Removing…</>
+                    : "Remove"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

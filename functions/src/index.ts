@@ -61,6 +61,15 @@ interface VideoStats {
   viewCount: number | null;
   likeCount: number | null;
   commentCount: number | null;
+  durationSeconds: number | null;
+}
+
+function parseDurationSeconds(iso8601: string): number {
+  const m = iso8601.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (parseInt(m[1] ?? "0") * 3600) +
+         (parseInt(m[2] ?? "0") * 60) +
+          parseInt(m[3] ?? "0");
 }
 
 interface PreviousSnapshot {
@@ -233,7 +242,7 @@ async function fetchVideoStatsBatch(
 
     try {
       const url = new URL(`${YT_BASE}/videos`);
-      url.searchParams.set("part", "statistics");
+      url.searchParams.set("part", "statistics,contentDetails");
       url.searchParams.set("id", chunks[i].join(","));
       url.searchParams.set("key", apiKey);
 
@@ -244,7 +253,7 @@ async function fetchVideoStatsBatch(
       }
 
       const data = await res.json() as {
-        items?: { id: string; statistics: Record<string, string> }[];
+        items?: { id: string; statistics: Record<string, string>; contentDetails?: { duration?: string } }[];
       };
 
       for (const item of data.items ?? []) {
@@ -253,6 +262,9 @@ async function fetchVideoStatsBatch(
           viewCount: s.viewCount != null ? Number(s.viewCount) : null,
           likeCount: s.likeCount != null ? Number(s.likeCount) : null,
           commentCount: s.commentCount != null ? Number(s.commentCount) : null,
+          durationSeconds: item.contentDetails?.duration
+            ? parseDurationSeconds(item.contentDetails.duration)
+            : null,
         };
       }
     } catch (err) {
@@ -262,6 +274,34 @@ async function fetchVideoStatsBatch(
   }
 
   return statsMap; // partial result is valid — VPH computed from whatever we have
+}
+
+/**
+ * Batch-check which video IDs are YouTube Shorts by making HEAD requests
+ * to youtube.com/shorts/{id}. Returns 200 for Shorts, 303 redirect for regular videos.
+ * Processes in batches of 10 with concurrency to avoid overwhelming YouTube.
+ */
+async function checkIfShorts(videoIds: string[]): Promise<Record<string, boolean>> {
+  const result: Record<string, boolean> = {};
+
+  for (let i = 0; i < videoIds.length; i += 10) {
+    const batch = videoIds.slice(i, i + 10);
+    const checks = batch.map(async (id) => {
+      try {
+        const res = await fetch(`https://www.youtube.com/shorts/${id}`, {
+          method: "HEAD",
+          redirect: "manual",
+        });
+        result[id] = res.status === 200;
+      } catch {
+        result[id] = false;
+      }
+    });
+    await Promise.all(checks);
+    if (i + 10 < videoIds.length) await delay(100);
+  }
+
+  return result;
 }
 
 /**
@@ -381,10 +421,28 @@ export const pollTrackedChannels = onSchedule(
         }
 
         // 5. Batch-fetch current stats from YouTube
-        const statsMap = await fetchVideoStatsBatch(
-          videosToProcess.map((v) => v.videoId),
-          apiKey
+        const videoIdsToProcess = videosToProcess.map((v) => v.videoId);
+        const statsMap = await fetchVideoStatsBatch(videoIdsToProcess, apiKey);
+
+        // 5b. Shorts classification — read cached values from channel doc.
+        // Only cache isShort === true (confirmed Shorts never change).
+        // isShort === false is NOT cached — it gets rechecked every poll so
+        // any videos that were incorrectly classified as non-Shorts get corrected.
+        const existingVideos: { videoId: string; isShort?: boolean }[] =
+          (channelDoc.data() as { videos?: { videoId: string; isShort?: boolean }[] }).videos ?? [];
+        const cachedShorts = new Map(
+          existingVideos.filter((v) => v.isShort === true).map((v) => [v.videoId, true as const])
         );
+        const uncheckedIds = allVideos
+          .map((v) => v.videoId)
+          .filter((id) => !cachedShorts.has(id));
+        const freshShorts = uncheckedIds.length > 0
+          ? await checkIfShorts(uncheckedIds)
+          : {};
+        const shortsMap: Record<string, boolean> = {};
+        for (const v of allVideos) {
+          shortsMap[v.videoId] = cachedShorts.get(v.videoId) ?? freshShorts[v.videoId] ?? false;
+        }
 
         // 6. Compute VPH per video using phase-appropriate formula
         const vphMap = new Map<string, number | null>();
@@ -473,13 +531,21 @@ export const pollTrackedChannels = onSchedule(
           });
         }
 
-        // Refresh video metadata on the channel doc
-        const videosMeta = allVideos.map((v) => ({
-          videoId: v.videoId,
-          title: v.title,
-          thumbnail: v.thumbnail,
-          publishedAt: v.publishedAt,
-        }));
+        // Refresh video metadata on the channel doc — only keep videos within 30 days
+        const cutoffMs = nowMs - 30 * 24 * 3_600_000;
+        const videosMeta = allVideos
+          .filter((v) => new Date(v.publishedAt).getTime() >= cutoffMs)
+          .map((v) => {
+            const stats = statsMap[v.videoId];
+            return {
+              videoId: v.videoId,
+              title: v.title,
+              thumbnail: v.thumbnail,
+              publishedAt: v.publishedAt,
+              isShort: shortsMap[v.videoId] ?? false,
+              durationSeconds: stats?.durationSeconds ?? null,
+            };
+          });
         batch.update(channelDoc.ref, {
           lastUpdated: Timestamp.fromDate(now),
           videos: videosMeta,

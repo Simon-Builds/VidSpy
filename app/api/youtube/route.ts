@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchUploadsPlaylistId, fetchPlaylistVideos, fetchVideoStats } from "@/lib/youtube";
+import { fetchUploadsPlaylistId, fetchPlaylistVideos, fetchVideoStats, checkIfShorts } from "@/lib/youtube";
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.YOUTUBE_API_KEY;
@@ -26,8 +26,16 @@ export async function POST(req: NextRequest) {
 
     const videos = await fetchPlaylistVideos(uploadsPlaylistId, apiKey);
 
-    const statsMap = await fetchVideoStats(videos.map((v) => v.videoId), apiKey);
-    const videosWithStats = videos.map((v) => ({ ...v, ...statsMap[v.videoId] }));
+    const videoIds = videos.map((v) => v.videoId);
+    const [statsMap, shortsMap] = await Promise.all([
+      fetchVideoStats(videoIds, apiKey),
+      checkIfShorts(videoIds),
+    ]);
+    const videosWithStats = videos.map((v) => ({
+      ...v,
+      ...statsMap[v.videoId],
+      isShort: shortsMap[v.videoId] ?? false,
+    }));
 
     const channelId = uploadsPlaylistId.replace(/^UU/, "UC");
     return NextResponse.json({

@@ -8,6 +8,16 @@ export interface VideoItem {
   viewCount: number | null;
   likeCount: number | null;
   commentCount: number | null;
+  durationSeconds: number | null;
+  isShort: boolean;
+}
+
+function parseDurationSeconds(iso8601: string): number {
+  const m = iso8601.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (parseInt(m[1] ?? "0") * 3600) +
+         (parseInt(m[2] ?? "0") * 60) +
+          parseInt(m[3] ?? "0");
 }
 
 export interface ChannelResult {
@@ -149,6 +159,8 @@ export async function fetchPlaylistVideos(
           viewCount: null,
           likeCount: null,
           commentCount: null,
+          durationSeconds: null,          // filled in by fetchVideoStats
+          isShort: false,                 // placeholder — overridden by checkIfShorts spread in route.ts
         });
       }
     }
@@ -172,13 +184,13 @@ export async function fetchPlaylistVideos(
 export async function fetchVideoStats(
   videoIds: string[],
   apiKey: string
-): Promise<Record<string, { viewCount: number | null; likeCount: number | null; commentCount: number | null }>> {
-  const map: Record<string, { viewCount: number | null; likeCount: number | null; commentCount: number | null }> = {};
+): Promise<Record<string, { viewCount: number | null; likeCount: number | null; commentCount: number | null; durationSeconds: number | null }>> {
+  const map: Record<string, { viewCount: number | null; likeCount: number | null; commentCount: number | null; durationSeconds: number | null }> = {};
 
   for (let i = 0; i < videoIds.length; i += 50) {
     const batch = videoIds.slice(i, i + 50);
     const url = new URL(`${YT_BASE}/videos`);
-    url.searchParams.set("part", "statistics");
+    url.searchParams.set("part", "statistics,contentDetails");
     url.searchParams.set("id", batch.join(","));
     url.searchParams.set("key", apiKey);
 
@@ -195,9 +207,38 @@ export async function fetchVideoStats(
         viewCount: s.viewCount != null ? Number(s.viewCount) : null,
         likeCount: s.likeCount != null ? Number(s.likeCount) : null,
         commentCount: s.commentCount != null ? Number(s.commentCount) : null,
+        durationSeconds: item.contentDetails?.duration
+          ? parseDurationSeconds(item.contentDetails.duration)
+          : null,
       };
     }
   }
 
   return map;
+}
+
+/**
+ * Batch-check which video IDs are YouTube Shorts by making HEAD requests
+ * to youtube.com/shorts/{id}. Returns 200 for Shorts, 303 redirect for regular videos.
+ */
+export async function checkIfShorts(videoIds: string[]): Promise<Record<string, boolean>> {
+  const result: Record<string, boolean> = {};
+
+  for (let i = 0; i < videoIds.length; i += 10) {
+    const batch = videoIds.slice(i, i + 10);
+    const checks = batch.map(async (id) => {
+      try {
+        const res = await fetch(`https://www.youtube.com/shorts/${id}`, {
+          method: "HEAD",
+          redirect: "manual",
+        });
+        result[id] = res.status === 200;
+      } catch {
+        result[id] = false;
+      }
+    });
+    await Promise.all(checks);
+  }
+
+  return result;
 }
