@@ -19,6 +19,7 @@ import {
   MoreHorizontal,
   Activity,
   Swords,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,6 +143,28 @@ function formatDate(iso: string) {
 
 function isShort(v: { isShort: boolean }): boolean {
   return v.isShort;
+}
+
+function exportCsv(videos: VideoItem[], channelTitle: string, filterLabel: string) {
+  const headers = ["Title", "Views", "Likes", "Comments", "VPH", "Engagement %", "Published", "Type"];
+  const rows = videos.map((v) => [
+    `"${v.title.replace(/"/g, '""')}"`,
+    v.viewCount ?? "",
+    v.likeCount ?? "",
+    v.commentCount ?? "",
+    v.vph != null ? v.vph.toFixed(1) : "",
+    v.engagementRate != null ? `${v.engagementRate}%` : "",
+    v.publishedAt ? new Date(v.publishedAt).toLocaleDateString("en-US") : "",
+    v.isShort ? "Short" : "Video",
+  ]);
+  const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${channelTitle.replace(/[^a-zA-Z0-9]/g, "_")}_${filterLabel}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function formatTime(d: Date) {
@@ -1110,28 +1133,41 @@ export default function Home() {
               );
             })()}
 
-            {/* Content-type tabs */}
+            {/* Content-type tabs + Export */}
             {(() => {
               const filteredVideos =
                 videoFilter === "all"    ? selectedData.videos :
                 videoFilter === "shorts" ? selectedData.videos.filter(isShort) :
                                            selectedData.videos.filter((v) => !isShort(v));
+              const filterLabel = videoFilter === "all" ? "all" : videoFilter === "shorts" ? "shorts" : "videos";
               return (
                 <>
-                  <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 w-fit border border-border">
-                    {(["videos", "shorts", "all"] as const).map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => setVideoFilter(f)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                          videoFilter === f
-                            ? "bg-card text-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {f === "all" ? "All" : f === "shorts" ? "Shorts" : "Videos"}
-                      </button>
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 w-fit border border-border">
+                      {(["videos", "shorts", "all"] as const).map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setVideoFilter(f)}
+                          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            videoFilter === f
+                              ? "bg-card text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {f === "all" ? "All" : f === "shorts" ? "Shorts" : "Videos"}
+                        </button>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={filteredVideos.length === 0}
+                      className="h-8 text-xs gap-1.5"
+                      onClick={() => exportCsv(filteredVideos, selectedData.channelTitle, filterLabel)}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Export CSV
+                    </Button>
                   </div>
 
                   {/* Single Video Pulse */}
