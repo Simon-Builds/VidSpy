@@ -1146,6 +1146,9 @@ export default function Home() {
   );
 
   const combinedReach = competitorChartData.reduce((sum, ch) => sum + ch.subscribers, 0);
+  const yAxisMax = competitorChartData.length > 0
+    ? Math.ceil(Math.max(...competitorChartData.map((d) => d.subscribers)) * 1.15)
+    : 0;
 
   const CompetitorView = (
     <div className="flex h-[calc(100vh-4rem)] gap-0">
@@ -1200,12 +1203,31 @@ export default function Home() {
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v: number) => formatNumber(v)}
+                  domain={[0, yAxisMax || "auto"]}
                 />
                 <Tooltip
                   content={<CompetitorTooltip />}
                   cursor={{ fill: "var(--primary)", opacity: 0.06 }}
                 />
-                <Bar dataKey="subscribers" fill="var(--primary)" radius={[4, 4, 0, 0]} maxBarSize={80} />
+                <Bar
+                  dataKey="subscribers"
+                  fill="var(--primary)"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={80}
+                  isAnimationActive={false}
+                  label={
+                    selectedChannelIds.length <= 10
+                      ? {
+                          position: "top" as const,
+                          formatter: (v: unknown) =>
+                            formatNumber(typeof v === "number" ? v : null),
+                          fill: "var(--muted-foreground)",
+                          fontSize: 12,
+                          offset: 6,
+                        }
+                      : false
+                  }
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
