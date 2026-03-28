@@ -1220,7 +1220,7 @@ export default function Home() {
     competitorChartData.map((ch) => [ch.name, ch.thumbnail])
   );
 
-  const combinedReach = competitorChartData.reduce((sum, ch) => sum + ch.subscribers, 0);
+
   const yAxisMax = competitorChartData.length > 0
     ? Math.ceil(Math.max(...competitorChartData.map((d) => d.value)) * 1.2)
     : 0;
@@ -1295,17 +1295,6 @@ export default function Home() {
             </SelectContent>
           </Select>
         </div>
-
-        {/* Combined Reach stat */}
-        {competitorChartData.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-4 w-fit">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Combined Reach</p>
-            <p className="text-2xl font-bold text-foreground tracking-tight leading-none">
-              {formatNumber(combinedReach)}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">total subscribers</p>
-          </div>
-        )}
 
         {/* Chart or empty state */}
         {competitorChartData.length === 0 ? (
