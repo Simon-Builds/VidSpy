@@ -966,16 +966,16 @@ export default function Home() {
 
   const SearchView = !result && !loading ? (
     /* ── Discovery / empty state ── */
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] max-w-2xl mx-auto text-center gap-8">
+    <div className="flex flex-col items-center justify-center min-h-0 md:min-h-[calc(100vh-8rem)] max-w-2xl mx-auto text-center gap-5 md:gap-8">
 
       {/* Hero icon */}
-      <div className="rounded-2xl bg-primary/10 p-6 ring-1 ring-primary/20">
-        <Activity className="w-20 h-20 text-primary/40" />
+      <div className="rounded-2xl bg-primary/10 p-4 md:p-6 ring-1 ring-primary/20">
+        <Activity className="w-14 h-14 md:w-20 md:h-20 text-primary/40" />
       </div>
 
       {/* Heading */}
       <div className="space-y-2">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">Discover a Channel</h2>
+        <h2 className="text-xl md:text-2xl font-bold tracking-tight text-foreground">Discover a Channel</h2>
         <p className="text-sm text-muted-foreground">
           Enter a YouTube channel URL, handle, or ID to analyse recent performance.
         </p>
@@ -1008,7 +1008,7 @@ export default function Home() {
       )}
 
       {/* Feature cards */}
-      <div className="grid grid-cols-3 gap-3 w-full mt-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-3 w-full mt-2">
         {[
           {
             icon: <Zap className="h-4 w-4 text-primary" />,
@@ -1039,7 +1039,7 @@ export default function Home() {
   ) : (
     /* ── Results / loading state ── */
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+      <div className="rounded-lg border border-border bg-card p-3 md:p-4 flex flex-col gap-3">
         {searchForm}
         <button
           onClick={handleClear}
@@ -1063,8 +1063,8 @@ export default function Home() {
       )}
 
       {result && (
-        <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+        <div className="rounded-lg border border-border bg-card overflow-x-auto">
+          <div className="flex items-center gap-3 px-4 md:px-6 py-3 md:py-4 border-b border-border">
             <Avatar className="h-10 w-10 border border-border">
               <AvatarImage src={result.channelThumbnail} alt={result.channelTitle} />
               <AvatarFallback className="bg-muted text-muted-foreground">
