@@ -296,6 +296,9 @@ function SingleVideoPulse({
                 `${formatNumber(typeof v === "number" ? v : null)}/hr`,
                 "VPH",
               ]}
+              labelFormatter={(_: unknown, payload: readonly any[]) =>
+                payload?.[0]?.payload?.fullTime ?? ""
+              }
             />
             <Area
               type="monotone"

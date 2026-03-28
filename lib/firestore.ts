@@ -445,7 +445,8 @@ export async function getTrackedChannelData(
 /** One data point for the Single Video Pulse area chart. */
 export interface VideoHistoryPoint {
   vph: number;
-  time: string;       // "HH:mm" label for XAxis
+  time: string;      // "HH:mm" label for XAxis
+  fullTime: string;  // "Mon DD, HH:mm" label for tooltip
   recordedAt: number; // unix seconds, used for in-memory sort
 }
 
@@ -471,12 +472,13 @@ export async function getVideoHistory(
       return {
         vph: data.vph as number | null,
         time: date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        fullTime: date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
         recordedAt: ts.seconds,
       };
     })
     .filter((p) => p.vph != null)   // exclude baseline + any null-delta snapshots
     .sort((a, b) => a.recordedAt - b.recordedAt)
-    .map((p) => ({ vph: p.vph as number, time: p.time, recordedAt: p.recordedAt }));
+    .map((p) => ({ vph: p.vph as number, time: p.time, fullTime: p.fullTime, recordedAt: p.recordedAt }));
 
   return points;
 }
