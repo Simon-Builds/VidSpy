@@ -1223,8 +1223,6 @@ export default function Home() {
     ? Math.ceil(Math.max(...competitorChartData.map((d) => d.value)) * 1.2)
     : 0;
 
-  const noMetricData =
-    competitorChartData.length > 0 && competitorChartData.every((d) => !d.hasData);
 
   const metricLabel =
     selectedMetric === "VPH" ? "Avg VPH" :
@@ -1308,14 +1306,6 @@ export default function Home() {
           <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
             <Users className="h-8 w-8 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">Select channels from the right panel to compare</p>
-          </div>
-        ) : noMetricData ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
-            <BarChart2 className="h-8 w-8 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground max-w-xs">
-              We need more data on these channels to compute average metrics.
-              A new high-frequency poll has been triggered.
-            </p>
           </div>
         ) : (
           <div className="flex-1 min-h-0">
