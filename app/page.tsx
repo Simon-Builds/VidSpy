@@ -35,6 +35,8 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   AreaChart,
   Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -224,6 +226,39 @@ function SingleVideoPulse({
 }
 
 // ---------------------------------------------------------------------------
+// MiniSparkline — tiny VPH trend line for each table row
+// ---------------------------------------------------------------------------
+
+function MiniSparkline({ channelId, videoId }: { channelId: string; videoId: string }) {
+  const [data, setData] = useState<VideoHistoryPoint[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getVideoHistory(channelId, videoId).then((h) => {
+      if (!cancelled) setData(h);
+    }).catch(() => {
+      if (!cancelled) setData([]);
+    });
+    return () => { cancelled = true; };
+  }, [channelId, videoId]);
+
+  if (data === null) return <span className="text-muted-foreground/30 text-xs">…</span>;
+  if (data.length < 2) return <span className="text-muted-foreground/30 text-xs">—</span>;
+
+  return (
+    <LineChart width={96} height={32} data={data}>
+      <Line
+        type="monotone"
+        dataKey="vph"
+        stroke="var(--primary)"
+        strokeWidth={1.5}
+        dot={false}
+        isAnimationActive={false}
+      />
+    </LineChart>
+  );
+}
+
 // VideoTable
 // ---------------------------------------------------------------------------
 
@@ -234,11 +269,13 @@ function VideoTable({
   showVph = true,
   selectedVideoId,
   onVideoSelect,
+  channelId,
 }: {
   videos: VideoItem[];
   showVph?: boolean;
   selectedVideoId?: string | null;
   onVideoSelect?: (videoId: string) => void;
+  channelId?: string;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
 
@@ -306,6 +343,11 @@ function VideoTable({
           <TableHead className="pl-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Video
           </TableHead>
+          {channelId && (
+            <TableHead className="w-28 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Trend
+            </TableHead>
+          )}
           {sortableHead("viewCount",     "Views",    "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
           {sortableHead("likeCount",     "Likes",    "w-24 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
           {sortableHead("commentCount",  "Comments", "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
@@ -349,6 +391,11 @@ function VideoTable({
                   </a>
                 </div>
               </TableCell>
+              {channelId && (
+                <TableCell className="py-4">
+                  <MiniSparkline channelId={channelId} videoId={video.videoId} />
+                </TableCell>
+              )}
               <TableCell className="text-right py-4">
                 <span className="text-base font-bold text-foreground tabular-nums">
                   {formatNumber(video.viewCount)}
@@ -952,6 +999,7 @@ export default function Home() {
                       videos={filteredVideos}
                       selectedVideoId={selectedVideoId}
                       onVideoSelect={handleVideoSelect}
+                      channelId={selectedChannelId ?? undefined}
                     />
                   </div>
                 </>
