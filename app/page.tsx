@@ -664,6 +664,7 @@ export default function Home() {
   const [maxComments, setMaxComments] = useState("");
   const [minEngagement, setMinEngagement] = useState("");
   const [maxEngagement, setMaxEngagement] = useState("");
+  const [publishedWithin, setPublishedWithin] = useState<"7" | "14" | "30">("30");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
@@ -857,12 +858,21 @@ export default function Home() {
     rangeFilter(v => v.commentCount, minComments, maxComments);
     rangeFilter(v => v.engagementRate, minEngagement, maxEngagement);
 
+    // Published within
+    const cutoff = Date.now() - Number(publishedWithin) * 86400000;
+    videos = videos.filter(v => {
+      const ts = typeof v.publishedAt === "string"
+        ? new Date(v.publishedAt).getTime()
+        : (v.publishedAt as any)?.toDate?.().getTime() ?? 0;
+      return ts >= cutoff;
+    });
+
     return videos;
-  }, [selectedData, videoFilter, searchQuery, minViews, maxViews, minVph, maxVph, minLikes, maxLikes, minComments, maxComments, minEngagement, maxEngagement]);
+  }, [selectedData, videoFilter, searchQuery, minViews, maxViews, minVph, maxVph, minLikes, maxLikes, minComments, maxComments, minEngagement, maxEngagement, publishedWithin]);
 
   const filterLabel = videoFilter === "all" ? "all" : videoFilter === "shorts" ? "shorts" : "videos";
   const advancedFilterValues = [minViews, maxViews, minVph, maxVph, minLikes, maxLikes, minComments, maxComments, minEngagement, maxEngagement];
-  const activeFilterCount = advancedFilterValues.filter(v => v !== "").length;
+  const activeFilterCount = advancedFilterValues.filter(v => v !== "").length + (publishedWithin !== "30" ? 1 : 0);
   const hasAnyFilter = searchQuery !== "" || activeFilterCount > 0;
 
   function clearAllFilters() {
@@ -872,6 +882,7 @@ export default function Home() {
     setMinLikes(""); setMaxLikes("");
     setMinComments(""); setMaxComments("");
     setMinEngagement(""); setMaxEngagement("");
+    setPublishedWithin("30");
     setShowAdvancedFilters(false);
   }
 
@@ -1336,6 +1347,26 @@ export default function Home() {
               {/* Row 2: advanced filters (conditional) */}
               {showAdvancedFilters && (
                 <div className="space-y-2 pt-1">
+                  {/* Published date toggle */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground font-medium w-[80px] shrink-0">Published</span>
+                    <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 border border-border">
+                      {(["7", "14", "30"] as const).map((d) => (
+                        <button
+                          key={d}
+                          onClick={() => setPublishedWithin(d)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                            publishedWithin === d
+                              ? "bg-card text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {d === "30" ? "30d (all)" : `${d}d`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex flex-wrap gap-x-4 gap-y-2">
                     {([
                       { label: "Views", min: minViews, setMin: setMinViews, max: maxViews, setMax: setMaxViews, numeric: true },
@@ -1368,6 +1399,7 @@ export default function Home() {
                   {/* Active filter pills + clear all */}
                   {activeFilterCount > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
+                      {publishedWithin !== "30" && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setPublishedWithin("30")}>Last {publishedWithin}d <X className="h-3 w-3" /></Badge>}
                       {minViews && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMinViews("")}>Views &ge; {minViews} <X className="h-3 w-3" /></Badge>}
                       {maxViews && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMaxViews("")}>Views &le; {maxViews} <X className="h-3 w-3" /></Badge>}
                       {minVph && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMinVph("")}>VPH &ge; {minVph} <X className="h-3 w-3" /></Badge>}
@@ -1380,7 +1412,7 @@ export default function Home() {
                       {maxEngagement && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMaxEngagement("")}>Eng &le; {maxEngagement}% <X className="h-3 w-3" /></Badge>}
                       <button
                         className="text-xs text-muted-foreground hover:text-foreground underline ml-1"
-                        onClick={() => { setMinViews(""); setMaxViews(""); setMinVph(""); setMaxVph(""); setMinLikes(""); setMaxLikes(""); setMinComments(""); setMaxComments(""); setMinEngagement(""); setMaxEngagement(""); }}
+                        onClick={() => { setPublishedWithin("30"); setMinViews(""); setMaxViews(""); setMinVph(""); setMaxVph(""); setMinLikes(""); setMaxLikes(""); setMinComments(""); setMaxComments(""); setMinEngagement(""); setMaxEngagement(""); }}
                       >
                         Clear all
                       </button>
@@ -1885,6 +1917,7 @@ export default function Home() {
                   </div>
                   <div className={`flex-1 min-w-0 overflow-hidden transition-all duration-300 ${isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
                     <p className="text-xs font-medium text-foreground leading-none whitespace-nowrap">VidMetrics</p>
+                    <p className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5">Simon Sarkka</p>
                   </div>
                   {!isCollapsed && (
                     <MoreHorizontal className="h-4 w-4 text-muted-foreground/50 shrink-0" />
