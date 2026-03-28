@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   Search,
   Loader2,
@@ -24,6 +24,7 @@ import {
   Download,
   Menu,
   X,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -651,6 +653,18 @@ export default function Home() {
   const [videoHistory, setVideoHistory] = useState<VideoHistoryPoint[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [videoFilter, setVideoFilter] = useState<"all" | "videos" | "shorts">("videos");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [minViews, setMinViews] = useState("");
+  const [maxViews, setMaxViews] = useState("");
+  const [minVph, setMinVph] = useState("");
+  const [maxVph, setMaxVph] = useState("");
+  const [minLikes, setMinLikes] = useState("");
+  const [maxLikes, setMaxLikes] = useState("");
+  const [minComments, setMinComments] = useState("");
+  const [maxComments, setMaxComments] = useState("");
+  const [minEngagement, setMinEngagement] = useState("");
+  const [maxEngagement, setMaxEngagement] = useState("");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [competitorSearch, setCompetitorSearch] = useState("");
@@ -685,6 +699,8 @@ export default function Home() {
     if (savedFilter === "all" || savedFilter === "videos" || savedFilter === "shorts") {
       setVideoFilter(savedFilter);
     }
+    const savedSearchQuery = sessionStorage.getItem("videoSearchQuery");
+    if (savedSearchQuery) setSearchQuery(savedSearchQuery);
     setHydrated(true);
   }, []);
 
@@ -714,6 +730,11 @@ export default function Home() {
     if (!hydrated) return;
     localStorage.setItem("vidspy-sidebar-collapsed", String(isCollapsed));
   }, [hydrated, isCollapsed]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    sessionStorage.setItem("videoSearchQuery", searchQuery);
+  }, [hydrated, searchQuery]);
 
   useEffect(() => {
     getTrackedChannelsWithMetrics()
@@ -751,6 +772,7 @@ export default function Home() {
     setSelectedData(null);
     setSelectedVideoId(null);
     setVideoHistory([]);
+    setSearchQuery("");
     if (!keepFilter) setVideoFilter("videos");
     try {
       const cached = await getTrackedChannelData(channelId);
@@ -805,6 +827,53 @@ export default function Home() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoFilter]);
+
+  // Centralized filtered videos — replaces inline IIFEs
+  const filteredVideos = useMemo(() => {
+    if (!selectedData) return [];
+    let videos = selectedData.videos;
+
+    // Content type
+    if (videoFilter === "shorts") videos = videos.filter(v => v.isShort);
+    else if (videoFilter === "videos") videos = videos.filter(v => !v.isShort);
+
+    // Title search
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      videos = videos.filter(v => v.title.toLowerCase().includes(q));
+    }
+
+    // Range filter helper
+    const rangeFilter = (field: (v: VideoItem) => number | null, min: string, max: string) => {
+      const minN = Number(min);
+      const maxN = Number(max);
+      if (min && !isNaN(minN)) videos = videos.filter(v => (field(v) ?? 0) >= minN);
+      if (max && !isNaN(maxN)) videos = videos.filter(v => (field(v) ?? 0) <= maxN);
+    };
+
+    rangeFilter(v => v.viewCount, minViews, maxViews);
+    rangeFilter(v => v.vph, minVph, maxVph);
+    rangeFilter(v => v.likeCount, minLikes, maxLikes);
+    rangeFilter(v => v.commentCount, minComments, maxComments);
+    rangeFilter(v => v.engagementRate, minEngagement, maxEngagement);
+
+    return videos;
+  }, [selectedData, videoFilter, searchQuery, minViews, maxViews, minVph, maxVph, minLikes, maxLikes, minComments, maxComments, minEngagement, maxEngagement]);
+
+  const filterLabel = videoFilter === "all" ? "all" : videoFilter === "shorts" ? "shorts" : "videos";
+  const advancedFilterValues = [minViews, maxViews, minVph, maxVph, minLikes, maxLikes, minComments, maxComments, minEngagement, maxEngagement];
+  const activeFilterCount = advancedFilterValues.filter(v => v !== "").length;
+  const hasAnyFilter = searchQuery !== "" || activeFilterCount > 0;
+
+  function clearAllFilters() {
+    setSearchQuery("");
+    setMinViews(""); setMaxViews("");
+    setMinVph(""); setMaxVph("");
+    setMinLikes(""); setMaxLikes("");
+    setMinComments(""); setMaxComments("");
+    setMinEngagement(""); setMaxEngagement("");
+    setShowAdvancedFilters(false);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1008,7 +1077,7 @@ export default function Home() {
       )}
 
       {/* Feature cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-3 w-full mt-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-3 w-full mt-2">
         {[
           {
             icon: <Zap className="h-4 w-4 text-primary" />,
@@ -1019,11 +1088,6 @@ export default function Home() {
             icon: <BarChart2 className="h-4 w-4 text-primary" />,
             title: "Engagement Ratios",
             desc: "Likes + comments over views, surfaced per video and averaged across the channel.",
-          },
-          {
-            icon: <TrendingUp className="h-4 w-4 text-primary" />,
-            title: "Smart Polling",
-            desc: "3-phase engine boosts viral videos to hourly tracking automatically.",
           },
         ].map(({ icon, title, desc }) => (
           <div key={title} className="rounded-lg border border-border bg-card p-4 text-left space-y-2">
@@ -1156,13 +1220,6 @@ export default function Home() {
             </div>
 
             {/* Stat cards — reference image style */}
-            {(() => {
-              const filteredVideos =
-                videoFilter === "all"    ? selectedData.videos :
-                videoFilter === "shorts" ? selectedData.videos.filter(isShort) :
-                                           selectedData.videos.filter((v) => !isShort(v));
-              const filterLabel = videoFilter === "all" ? "last 30 days" : videoFilter === "shorts" ? "shorts" : "videos";
-              return (
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 md:gap-3">
               <StatCard
                 label="Subscribers"
@@ -1205,69 +1262,170 @@ export default function Home() {
                 description={`${filterLabel} speed`}
               />
             </div>
-              );
-            })()}
 
-            {/* Content-type tabs + Export */}
-            {(() => {
-              const filteredVideos =
-                videoFilter === "all"    ? selectedData.videos :
-                videoFilter === "shorts" ? selectedData.videos.filter(isShort) :
-                                           selectedData.videos.filter((v) => !isShort(v));
-              const filterLabel = videoFilter === "all" ? "all" : videoFilter === "shorts" ? "shorts" : "videos";
-              return (
-                <>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 w-fit border border-border">
-                      {(["videos", "shorts", "all"] as const).map((f) => (
-                        <button
-                          key={f}
-                          onClick={() => setVideoFilter(f)}
-                          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                            videoFilter === f
-                              ? "bg-card text-foreground shadow-sm"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {f === "all" ? "All" : f === "shorts" ? "Shorts" : "Videos"}
-                        </button>
-                      ))}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={filteredVideos.length === 0}
-                      className="h-8 text-xs gap-1.5"
-                      onClick={() => exportCsv(filteredVideos, selectedData.channelTitle, filterLabel)}
+            {/* Content-type tabs + Filters + Export */}
+            <div className="space-y-2">
+              {/* Row 1: toggle + search + filters button + export */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 w-fit border border-border">
+                  {(["videos", "shorts", "all"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setVideoFilter(f)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        videoFilter === f
+                          ? "bg-card text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
                     >
-                      <Download className="h-3.5 w-3.5" />
-                      Export CSV
-                    </Button>
-                  </div>
+                      {f === "all" ? "All" : f === "shorts" ? "Shorts" : "Videos"}
+                    </button>
+                  ))}
+                </div>
 
-                  {/* Single Video Pulse */}
-                  <SingleVideoPulse
-                    history={videoHistory}
-                    loading={loadingHistory}
-                    videoTitle={
-                      selectedVideoId
-                        ? (filteredVideos.find((v) => v.videoId === selectedVideoId)?.title ?? null)
-                        : null
-                    }
+                {/* Search input */}
+                <div className="relative flex-1 min-w-[160px] max-w-[240px]">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Search videos..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-8 pl-8 pr-7 text-xs bg-muted/30 border-border"
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
 
-                  {/* Video table */}
-                  <div className="rounded-lg border border-border bg-card overflow-x-auto">
-                    <VideoTable
-                      videos={filteredVideos}
-                      selectedVideoId={selectedVideoId}
-                      onVideoSelect={handleVideoSelect}
-                      channelId={selectedChannelId ?? undefined}
-                    />
+                {/* Filters toggle */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <Badge className="h-4 min-w-4 px-1 flex items-center justify-center text-[10px] rounded-full bg-primary text-primary-foreground">
+                      {activeFilterCount}
+                    </Badge>
+                  )}
+                </Button>
+
+                {/* Export CSV — pushed right */}
+                <div className="ml-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={filteredVideos.length === 0}
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => exportCsv(filteredVideos, selectedData.channelTitle, filterLabel)}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export CSV
+                  </Button>
+                </div>
+              </div>
+
+              {/* Row 2: advanced filters (conditional) */}
+              {showAdvancedFilters && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    {([
+                      { label: "Views", min: minViews, setMin: setMinViews, max: maxViews, setMax: setMaxViews, numeric: true },
+                      { label: "VPH", min: minVph, setMin: setMinVph, max: maxVph, setMax: setMaxVph, numeric: true },
+                      { label: "Likes", min: minLikes, setMin: setMinLikes, max: maxLikes, setMax: setMaxLikes, numeric: true },
+                      { label: "Comments", min: minComments, setMin: setMinComments, max: maxComments, setMax: setMaxComments, numeric: true },
+                      { label: "Engagement %", min: minEngagement, setMin: setMinEngagement, max: maxEngagement, setMax: setMaxEngagement, numeric: false },
+                    ] as const).map(({ label, min, setMin, max, setMax, numeric }) => (
+                      <div key={label} className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-muted-foreground font-medium w-[80px] shrink-0">{label}</span>
+                        <Input
+                          placeholder="Min"
+                          inputMode={numeric ? "numeric" : "decimal"}
+                          value={min}
+                          onChange={(e) => setMin(numeric ? e.target.value.replace(/[^0-9]/g, "") : e.target.value.replace(/[^0-9.]/g, ""))}
+                          className="h-7 w-[72px] text-xs bg-muted/30 border-border px-2"
+                        />
+                        <span className="text-[10px] text-muted-foreground">–</span>
+                        <Input
+                          placeholder="Max"
+                          inputMode={numeric ? "numeric" : "decimal"}
+                          value={max}
+                          onChange={(e) => setMax(numeric ? e.target.value.replace(/[^0-9]/g, "") : e.target.value.replace(/[^0-9.]/g, ""))}
+                          className="h-7 w-[72px] text-xs bg-muted/30 border-border px-2"
+                        />
+                      </div>
+                    ))}
                   </div>
-                </>
-              );
-            })()}
+
+                  {/* Active filter pills + clear all */}
+                  {activeFilterCount > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {minViews && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMinViews("")}>Views &ge; {minViews} <X className="h-3 w-3" /></Badge>}
+                      {maxViews && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMaxViews("")}>Views &le; {maxViews} <X className="h-3 w-3" /></Badge>}
+                      {minVph && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMinVph("")}>VPH &ge; {minVph} <X className="h-3 w-3" /></Badge>}
+                      {maxVph && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMaxVph("")}>VPH &le; {maxVph} <X className="h-3 w-3" /></Badge>}
+                      {minLikes && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMinLikes("")}>Likes &ge; {minLikes} <X className="h-3 w-3" /></Badge>}
+                      {maxLikes && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMaxLikes("")}>Likes &le; {maxLikes} <X className="h-3 w-3" /></Badge>}
+                      {minComments && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMinComments("")}>Comments &ge; {minComments} <X className="h-3 w-3" /></Badge>}
+                      {maxComments && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMaxComments("")}>Comments &le; {maxComments} <X className="h-3 w-3" /></Badge>}
+                      {minEngagement && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMinEngagement("")}>Eng &ge; {minEngagement}% <X className="h-3 w-3" /></Badge>}
+                      {maxEngagement && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setMaxEngagement("")}>Eng &le; {maxEngagement}% <X className="h-3 w-3" /></Badge>}
+                      <button
+                        className="text-xs text-muted-foreground hover:text-foreground underline ml-1"
+                        onClick={() => { setMinViews(""); setMaxViews(""); setMinVph(""); setMaxVph(""); setMinLikes(""); setMaxLikes(""); setMinComments(""); setMaxComments(""); setMinEngagement(""); setMaxEngagement(""); }}
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Result count when filters active */}
+              {hasAnyFilter && selectedData && (
+                <p className="text-xs text-muted-foreground">
+                  Showing {filteredVideos.length} of {selectedData.videos.length} videos
+                </p>
+              )}
+            </div>
+
+            {/* Single Video Pulse */}
+            <SingleVideoPulse
+              history={videoHistory}
+              loading={loadingHistory}
+              videoTitle={
+                selectedVideoId
+                  ? (filteredVideos.find((v) => v.videoId === selectedVideoId)?.title ?? null)
+                  : null
+              }
+            />
+
+            {/* Video table or empty state */}
+            {filteredVideos.length === 0 && hasAnyFilter ? (
+              <div className="rounded-lg border border-border bg-card flex flex-col items-center justify-center py-12 text-center">
+                <p className="text-sm text-muted-foreground">No videos match your filters</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={clearAllFilters}>
+                  Clear all filters
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border bg-card overflow-x-auto">
+                <VideoTable
+                  videos={filteredVideos}
+                  selectedVideoId={selectedVideoId}
+                  onVideoSelect={handleVideoSelect}
+                  channelId={selectedChannelId ?? undefined}
+                />
+              </div>
+            )}
 
             {/* VPH legend */}
             <p className="text-xs text-muted-foreground/60 px-1">
