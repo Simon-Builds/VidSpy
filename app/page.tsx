@@ -12,6 +12,7 @@ import {
   Users,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
   TrendingUp,
   Clock,
   BarChart2,
@@ -49,10 +50,16 @@ import {
   Bar,
   XAxis,
   YAxis,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   CartesianGrid,
   ResponsiveContainer,
 } from "recharts";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   trackChannelWithData,
   removeTrackedChannel,
@@ -257,7 +264,7 @@ function SingleVideoPulse({
               axisLine={false}
               tickFormatter={(v: number) => formatNumber(v)}
             />
-            <Tooltip
+            <RechartsTooltip
               contentStyle={{
                 backgroundColor: "var(--card)",
                 borderColor: "var(--border)",
@@ -610,8 +617,14 @@ export default function Home() {
   const [selectedMetric, setSelectedMetric] = useState<"VPH" | "VIEWS" | "VIDEOS" | "SUBS">("VPH");
   const [selectedType, setSelectedType] = useState<"TOTAL" | "LONG" | "SHORTS">("TOTAL");
 
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const initialFetch = useRef(true);
+
+  function toggleSidebar(next: boolean) {
+    setIsCollapsed(next);
+    setTimeout(() => window.dispatchEvent(new Event("resize")), 310);
+  }
 
   // Restore all persisted state on mount
   useEffect(() => {
@@ -619,6 +632,8 @@ export default function Home() {
     if (saved === "search" || saved === "tracked" || saved === "competitor") {
       setActiveNav(saved);
     }
+    const savedCollapsed = localStorage.getItem("vidspy-sidebar-collapsed");
+    if (savedCollapsed === "true") setIsCollapsed(true);
     const savedInput = sessionStorage.getItem("searchInput");
     const savedResult = sessionStorage.getItem("searchResult");
     if (savedInput) setInput(savedInput);
@@ -653,6 +668,11 @@ export default function Home() {
     if (result) sessionStorage.setItem("searchResult", JSON.stringify(result));
     else sessionStorage.removeItem("searchResult");
   }, [hydrated, result]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem("vidspy-sidebar-collapsed", String(isCollapsed));
+  }, [hydrated, isCollapsed]);
 
   useEffect(() => {
     getTrackedChannelsWithMetrics()
@@ -1386,7 +1406,7 @@ export default function Home() {
                   tickFormatter={(v: number) => formatNumber(v)}
                   domain={[0, yAxisMax || "auto"]}
                 />
-                <Tooltip
+                <RechartsTooltip
                   content={<CompetitorTooltip formatter={getFormatter(selectedMetric)} />}
                   cursor={{ fill: "var(--primary)", opacity: 0.06 }}
                 />
@@ -1474,52 +1494,107 @@ export default function Home() {
   return (
     <div className="flex min-h-screen bg-background">
       {/* Left sidebar */}
-      <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col">
-        {/* Logo */}
-        <div className="flex items-center gap-2 px-5 py-5 border-b border-border">
-          <div className="rounded-md bg-primary/10 p-1.5 ring-1 ring-primary/20 shrink-0">
-            <Activity className="h-4 w-4 text-primary" />
+      <aside className={`shrink-0 border-r border-border bg-card flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? "w-[70px]" : "w-56"}`}>
+        {/* Logo / collapse toggle */}
+        {isCollapsed ? (
+          <button
+            onClick={() => toggleSidebar(false)}
+            className="flex items-center justify-center w-full h-[65px] border-b border-border hover:bg-white/[0.04] transition-colors"
+          >
+            <div className="rounded-md bg-primary/10 p-1.5 ring-1 ring-primary/20">
+              <Activity className="h-4 w-4 text-primary" />
+            </div>
+          </button>
+        ) : (
+          <div className="flex items-center justify-between px-4 border-b border-border h-[65px]">
+            <div className="flex items-center gap-2">
+              <div className="rounded-md bg-primary/10 p-1.5 ring-1 ring-primary/20 shrink-0">
+                <Activity className="h-4 w-4 text-primary" />
+              </div>
+              <span className="font-mono tracking-tighter drop-shadow-[0_0_10px_rgba(155,110,255,0.2)]">
+                <span className="text-sm font-bold text-foreground">VID</span>
+                <span className="text-sm font-normal text-primary">SPY</span>
+              </span>
+            </div>
+            <button
+              onClick={() => toggleSidebar(true)}
+              className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
           </div>
-          <span className="font-mono tracking-tighter drop-shadow-[0_0_10px_rgba(155,110,255,0.2)]">
-            <span className="text-sm font-bold text-foreground">VID</span>
-            <span className="text-sm font-normal text-primary">SPY</span>
-          </span>
-        </div>
+        )}
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => { setActiveNav(item.id); localStorage.setItem("activeNav", item.id); }}
-              className={`w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-all ${
-                activeNav === item.id
-                  ? "bg-white/[0.07] text-foreground border border-border"
-                  : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground border border-transparent"
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
-        </nav>
+        <TooltipProvider delayDuration={0}>
+          <nav className="flex-1 px-3 py-4 space-y-0.5">
+            {navItems.map((item) => (
+              <Tooltip key={item.id} disableHoverableContent>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => {
+                      if (isCollapsed && item.id === "search") {
+                        toggleSidebar(false);
+                        setActiveNav("search");
+                        localStorage.setItem("activeNav", "search");
+                        return;
+                      }
+                      setActiveNav(item.id);
+                      localStorage.setItem("activeNav", item.id);
+                    }}
+                    className={`w-full flex items-center rounded-md transition-all duration-300 ${
+                      isCollapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
+                    } text-sm font-medium ${
+                      activeNav === item.id
+                        ? "bg-white/[0.07] text-foreground border border-border"
+                        : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground border border-transparent"
+                    }`}
+                  >
+                    {item.icon}
+                    <span className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${
+                      isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                    }`}>
+                      {item.label}
+                    </span>
+                  </button>
+                </TooltipTrigger>
+                {isCollapsed && (
+                  <TooltipContent side="right" className="text-xs">
+                    {item.label}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            ))}
+          </nav>
+        </TooltipProvider>
 
-        {/* Bottom user-style section */}
+        {/* Bottom VidMetrics section */}
         <div className="px-3 py-3 border-t border-border">
-          <div className="flex items-center gap-2.5 rounded-md px-2 py-2">
-            <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center shrink-0">
-              <Zap className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground leading-none">VidMetrics</p>
-            </div>
-            <MoreHorizontal className="h-4 w-4 text-muted-foreground/50 shrink-0" />
-          </div>
+          <TooltipProvider delayDuration={0}>
+            <Tooltip disableHoverableContent>
+              <TooltipTrigger asChild>
+                <div className={`flex items-center rounded-md px-2 py-2 ${isCollapsed ? "justify-center" : "gap-2.5"}`}>
+                  <div className="h-7 w-7 rounded-full bg-muted border border-border flex items-center justify-center shrink-0">
+                    <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <div className={`flex-1 min-w-0 overflow-hidden transition-all duration-300 ${isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"}`}>
+                    <p className="text-xs font-medium text-foreground leading-none whitespace-nowrap">VidMetrics</p>
+                  </div>
+                  {!isCollapsed && (
+                    <MoreHorizontal className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+                  )}
+                </div>
+              </TooltipTrigger>
+              {isCollapsed && (
+                <TooltipContent side="right" className="text-xs">VidMetrics</TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 px-8 py-8 overflow-auto bg-background">
+      <main className="flex-1 px-8 py-8 overflow-y-auto overflow-x-hidden bg-background">
         {activeNav === "search" ? SearchView : activeNav === "competitor" ? CompetitorView : TrackedView}
       </main>
 
