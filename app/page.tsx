@@ -1464,13 +1464,13 @@ export default function Home() {
       {/* Chart panel */}
       <div className="flex-1 lg:flex-[3] flex flex-col gap-4 lg:pr-6 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="rounded-lg bg-primary/10 p-2 ring-1 ring-primary/20 shrink-0">
               <Swords className="h-5 w-5 text-primary" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-base md:text-lg font-semibold text-foreground truncate">{competitorHeading}</h2>
+              <h2 className="text-sm md:text-lg font-semibold text-foreground truncate">{competitorHeading}</h2>
               <p className="text-xs text-muted-foreground">
                 {selectedChannelIds.length} channel{selectedChannelIds.length !== 1 ? "s" : ""} selected
               </p>
@@ -1527,7 +1527,7 @@ export default function Home() {
 
         {/* Chart or empty state */}
         {competitorChartData.length === 0 ? (
-          <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center text-center gap-3">
+          <div className="h-[300px] lg:flex-1 lg:h-auto flex flex-col items-center justify-center text-center gap-3">
             <Users className="h-8 w-8 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">
               <span className="hidden lg:inline">Select channels from the right panel to compare</span>
@@ -1535,7 +1535,7 @@ export default function Home() {
             </p>
           </div>
         ) : (
-          <div className="flex-1 min-h-[300px] lg:min-h-0">
+          <div className="h-[300px] lg:flex-1 lg:h-auto">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={competitorChartData} margin={{ top: 28, right: 10, bottom: 20, left: 10 }}>
                 <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
