@@ -294,13 +294,18 @@ function ChannelIconTick({
   );
 }
 
-function CompetitorTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; subscribers: number } }> }) {
+function CompetitorTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; subscribers: number; thumbnail: string } }> }) {
   if (!active || !payload?.length) return null;
-  const { name, subscribers } = payload[0].payload;
+  const { name, subscribers, thumbnail } = payload[0].payload;
   return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
-      <p className="text-xs font-medium text-foreground">{name}</p>
-      <p className="text-sm font-semibold text-primary">{subscribers.toLocaleString()} subscribers</p>
+    <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg flex items-center gap-2.5">
+      {thumbnail && (
+        <img src={thumbnail} alt={name} className="h-7 w-7 rounded-full shrink-0 object-cover" />
+      )}
+      <div>
+        <p className="text-xs font-medium text-foreground">{name}</p>
+        <p className="text-sm font-semibold text-primary">{subscribers.toLocaleString()} subscribers</p>
+      </div>
     </div>
   );
 }
