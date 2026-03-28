@@ -25,6 +25,14 @@ export interface TrackedChannel {
   lastUpdated: Timestamp | null;
   subscriberCount?: number | null;
   totalViews?: number | null;
+  // Aggregated metrics (populated by hourly poll)
+  avgVphTotal?: number | null;
+  avgVphLong?: number | null;
+  avgVphShort?: number | null;
+  avgViewsTotal?: number | null;
+  avgViewsLong?: number | null;
+  avgViewsShort?: number | null;
+  videosLast30Days?: number | null;
 }
 
 export interface VideoSnapshot {

@@ -33,6 +33,13 @@ import {
 } from "@/components/ui/table";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AreaChart,
   Area,
   LineChart,
@@ -94,6 +101,33 @@ function formatNumber(n: number | null) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toLocaleString();
+}
+
+function getChannelValue(
+  ch: TrackedChannel,
+  metric: "VPH" | "VIEWS" | "VIDEOS",
+  type: "TOTAL" | "LONG" | "SHORTS",
+): number | null {
+  if (metric === "VPH") {
+    if (type === "LONG")   return ch.avgVphLong   ?? null;
+    if (type === "SHORTS") return ch.avgVphShort  ?? null;
+    return ch.avgVphTotal ?? null;
+  }
+  if (metric === "VIEWS") {
+    if (type === "LONG")   return ch.avgViewsLong   ?? null;
+    if (type === "SHORTS") return ch.avgViewsShort  ?? null;
+    return ch.avgViewsTotal ?? null;
+  }
+  return ch.videosLast30Days ?? null;
+}
+
+function getFormatter(metric: "VPH" | "VIEWS" | "VIDEOS") {
+  return (v: unknown): string => {
+    const n = typeof v === "number" ? v : null;
+    const base = formatNumber(n);
+    if (metric === "VPH") return base === "—" ? "—" : `${base} VPH`;
+    return base;
+  };
 }
 
 function formatDate(iso: string) {
@@ -294,9 +328,17 @@ function ChannelIconTick({
   );
 }
 
-function CompetitorTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { name: string; subscribers: number; thumbnail: string } }> }) {
+function CompetitorTooltip({
+  active,
+  payload,
+  formatter,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { name: string; value: number; thumbnail: string } }>;
+  formatter?: (v: unknown) => string;
+}) {
   if (!active || !payload?.length) return null;
-  const { name, subscribers, thumbnail } = payload[0].payload;
+  const { name, value, thumbnail } = payload[0].payload;
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg flex items-center gap-2.5">
       {thumbnail && (
@@ -304,7 +346,9 @@ function CompetitorTooltip({ active, payload }: { active?: boolean; payload?: Ar
       )}
       <div>
         <p className="text-xs font-medium text-foreground">{name}</p>
-        <p className="text-sm font-semibold text-primary">{subscribers.toLocaleString()} subscribers</p>
+        <p className="text-sm font-semibold text-primary">
+          {formatter ? formatter(value) : value.toLocaleString()}
+        </p>
       </div>
     </div>
   );
@@ -538,6 +582,8 @@ export default function Home() {
 
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
   const [competitorSearch, setCompetitorSearch] = useState("");
+  const [selectedMetric, setSelectedMetric] = useState<"VPH" | "VIEWS" | "VIDEOS">("VPH");
+  const [selectedType, setSelectedType] = useState<"TOTAL" | "LONG" | "SHORTS">("TOTAL");
 
   useEffect(() => {
     const saved = localStorage.getItem("activeNav") as NavItem | null;
@@ -1156,12 +1202,17 @@ export default function Home() {
 
   const competitorChartData = trackedChannels
     .filter((ch) => selectedChannelIds.includes(ch.channelId))
-    .map((ch) => ({
-      name: ch.channelTitle,
-      subscribers: ch.subscriberCount ?? 0,
-      thumbnail: ch.channelThumbnail,
-    }))
-    .sort((a, b) => b.subscribers - a.subscribers);
+    .map((ch) => {
+      const raw = getChannelValue(ch, selectedMetric, selectedType);
+      return {
+        name: ch.channelTitle,
+        value: raw ?? 0,
+        hasData: raw != null,
+        thumbnail: ch.channelThumbnail,
+        subscribers: ch.subscriberCount ?? 0,
+      };
+    })
+    .sort((a, b) => b.value - a.value);
 
   const competitorThumbnailMap = new Map(
     competitorChartData.map((ch) => [ch.name, ch.thumbnail])
@@ -1169,8 +1220,24 @@ export default function Home() {
 
   const combinedReach = competitorChartData.reduce((sum, ch) => sum + ch.subscribers, 0);
   const yAxisMax = competitorChartData.length > 0
-    ? Math.ceil(Math.max(...competitorChartData.map((d) => d.subscribers)) * 1.15)
+    ? Math.ceil(Math.max(...competitorChartData.map((d) => d.value)) * 1.2)
     : 0;
+
+  const noMetricData =
+    competitorChartData.length > 0 && competitorChartData.every((d) => !d.hasData);
+
+  const metricLabel =
+    selectedMetric === "VPH" ? "Avg VPH" :
+    selectedMetric === "VIEWS" ? "Avg Views" : "Videos / 30d";
+
+  const typeLabel =
+    selectedType === "TOTAL" ? "Total" :
+    selectedType === "LONG" ? "Long-form" : "Shorts";
+
+  const competitorHeading =
+    selectedMetric === "VIDEOS"
+      ? "Videos / 30d Comparison"
+      : `${metricLabel} Comparison (${typeLabel} content)`;
 
   const CompetitorView = (
     <div className="flex h-[calc(100vh-4rem)] gap-0">
@@ -1182,11 +1249,47 @@ export default function Home() {
             <Swords className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Subscriber Comparison</h2>
+            <h2 className="text-lg font-semibold text-foreground">{competitorHeading}</h2>
             <p className="text-xs text-muted-foreground">
               {selectedChannelIds.length} channel{selectedChannelIds.length !== 1 ? "s" : ""} selected
             </p>
           </div>
+        </div>
+
+        {/* Metric Selector Toolbar */}
+        <div className="flex items-center justify-between gap-4">
+          {/* Left: Content Type segmented control */}
+          <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-1 border border-border">
+            {(["TOTAL", "LONG", "SHORTS"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setSelectedType(t)}
+                disabled={selectedMetric === "VIDEOS"}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  selectedType === t && selectedMetric !== "VIDEOS"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t === "TOTAL" ? "Total" : t === "LONG" ? "Long-form" : "Shorts"}
+              </button>
+            ))}
+          </div>
+
+          {/* Right: Metric Select dropdown */}
+          <Select
+            value={selectedMetric}
+            onValueChange={(v) => setSelectedMetric(v as "VPH" | "VIEWS" | "VIDEOS")}
+          >
+            <SelectTrigger className="h-8 w-[140px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="VPH">Avg VPH</SelectItem>
+              <SelectItem value="VIEWS">Avg Views</SelectItem>
+              <SelectItem value="VIDEOS">Videos / 30d</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Combined Reach stat */}
@@ -1206,10 +1309,18 @@ export default function Home() {
             <Users className="h-8 w-8 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">Select channels from the right panel to compare</p>
           </div>
+        ) : noMetricData ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
+            <BarChart2 className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground max-w-xs">
+              We need more data on these channels to compute average metrics.
+              A new high-frequency poll has been triggered.
+            </p>
+          </div>
         ) : (
           <div className="flex-1 min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={competitorChartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <BarChart data={competitorChartData} margin={{ top: 28, right: 20, bottom: 20, left: 20 }}>
                 <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis
                   dataKey="name"
@@ -1228,11 +1339,11 @@ export default function Home() {
                   domain={[0, yAxisMax || "auto"]}
                 />
                 <Tooltip
-                  content={<CompetitorTooltip />}
+                  content={<CompetitorTooltip formatter={getFormatter(selectedMetric)} />}
                   cursor={{ fill: "var(--primary)", opacity: 0.06 }}
                 />
                 <Bar
-                  dataKey="subscribers"
+                  dataKey="value"
                   fill="var(--primary)"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={80}
@@ -1241,8 +1352,7 @@ export default function Home() {
                     selectedChannelIds.length <= 10
                       ? {
                           position: "top" as const,
-                          formatter: (v: unknown) =>
-                            formatNumber(typeof v === "number" ? v : null),
+                          formatter: getFormatter(selectedMetric),
                           fill: "var(--muted-foreground)",
                           fontSize: 12,
                           offset: 6,
