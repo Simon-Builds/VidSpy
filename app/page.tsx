@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search,
   Loader2,
@@ -13,6 +13,7 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   TrendingUp,
   Clock,
   BarChart2,
@@ -21,6 +22,8 @@ import {
   Activity,
   Swords,
   Download,
+  Menu,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -194,14 +197,14 @@ function StatCard({
   description: string;
 }) {
   return (
-    <div className="flex-1 min-w-0 rounded-lg border border-border bg-card p-5 flex flex-col gap-4">
+    <div className="flex-1 min-w-0 rounded-lg border border-border bg-card p-3 md:p-5 flex flex-col gap-4">
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {label}
         </span>
         <span className="text-muted-foreground/50 shrink-0">{icon}</span>
       </div>
-      <p className="text-3xl font-bold text-foreground tracking-tight leading-none">
+      <p className="text-2xl md:text-3xl font-bold text-foreground tracking-tight leading-none">
         {value}
       </p>
       <p className="text-xs text-muted-foreground">{description}</p>
@@ -226,7 +229,7 @@ function SingleVideoPulse({
     <div className="rounded-lg border border-border bg-card p-5">
       <div className="mb-4">
         <p className="text-sm font-semibold text-foreground">Video Pulse</p>
-        <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[480px]">
+        <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-full sm:max-w-[480px]">
           {videoTitle ?? "Select a video below"}
         </p>
       </div>
@@ -405,6 +408,7 @@ function VideoTable({
   channelId?: string;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
+  const [expandedVideoId, setExpandedVideoId] = useState<string | null>(null);
 
   const vphValues = videos.map((v) => v.vph).filter((v): v is number => v != null);
   const avgVph = vphValues.length > 0
@@ -463,6 +467,9 @@ function VideoTable({
     </TableHead>
   );
 
+  // Count visible columns for colSpan on expandable row
+  const visibleCols = 2 + (channelId ? 1 : 0) + (showVph ? 2 : 0) + 3;
+
   return (
     <Table>
       <TableHeader>
@@ -471,112 +478,145 @@ function VideoTable({
             Video
           </TableHead>
           {channelId && (
-            <TableHead className="w-28 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            <TableHead className="w-28 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden md:table-cell">
               Trend
             </TableHead>
           )}
           {sortableHead("viewCount",     "Views",    "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
-          {sortableHead("likeCount",     "Likes",    "w-24 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
-          {sortableHead("commentCount",  "Comments", "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
+          {sortableHead("likeCount",     "Likes",    "w-24 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell")}
+          {sortableHead("commentCount",  "Comments", "w-28 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell")}
           {showVph && sortableHead("vph",            "VPH",        "w-36 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
-          {showVph && sortableHead("engagementRate", "Engagement", "w-32 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
-          {sortableHead("publishedAt",   "Published", "w-36 pr-6 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider")}
+          {showVph && sortableHead("engagementRate", "Engagement", "w-32 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden xl:table-cell")}
+          {sortableHead("publishedAt",   "Published", "w-36 pr-6 text-right py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider hidden lg:table-cell")}
         </TableRow>
       </TableHeader>
       <TableBody>
         {sorted.map((video) => {
           const isAboveAvg = avgVph != null && video.vph != null && video.vph > avgVph;
+          const isExpanded = expandedVideoId === video.videoId;
           return (
-            <TableRow
-              key={video.videoId}
-              onClick={() => onVideoSelect?.(video.videoId)}
-              className={`border-b border-border/50 transition-colors ${
-                onVideoSelect ? "cursor-pointer" : ""
-              } ${
-                selectedVideoId === video.videoId
-                  ? "bg-primary/10 hover:bg-primary/10"
-                  : "hover:bg-white/[0.03]"
-              }`}
-            >
-              <TableCell className="pl-6 py-4">
-                <div className="flex items-center gap-4">
-                  {video.thumbnail && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={video.thumbnail}
-                      alt=""
-                      className="h-10 w-[72px] rounded-md object-cover shrink-0 hidden sm:block opacity-90"
-                    />
-                  )}
-                  <a
-                    href={`https://www.youtube.com/watch?v=${video.videoId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium text-foreground hover:text-primary transition-colors line-clamp-2 leading-snug"
-                  >
-                    {video.title}
-                  </a>
-                </div>
-              </TableCell>
-              {channelId && (
-                <TableCell className="py-4">
-                  <MiniSparkline channelId={channelId} videoId={video.videoId} />
-                </TableCell>
-              )}
-              <TableCell className="text-right py-4">
-                <span className="text-base font-bold text-foreground tabular-nums">
-                  {formatNumber(video.viewCount)}
-                </span>
-              </TableCell>
-              <TableCell className="text-right py-4 text-sm text-muted-foreground tabular-nums">
-                {formatNumber(video.likeCount)}
-              </TableCell>
-              <TableCell className="text-right py-4 text-sm text-muted-foreground tabular-nums">
-                {formatNumber(video.commentCount)}
-              </TableCell>
-              {showVph && (
-                <TableCell className="text-right py-4">
-                  {video.vph != null ? (
-                    <span
-                      className={`text-base font-bold tabular-nums ${
-                        isAboveAvg ? "text-emerald-400" : "text-foreground"
-                      }`}
+            <React.Fragment key={video.videoId}>
+              <TableRow
+                onClick={() => {
+                  onVideoSelect?.(video.videoId);
+                  setExpandedVideoId(isExpanded ? null : video.videoId);
+                }}
+                className={`border-b border-border/50 transition-colors ${
+                  onVideoSelect ? "cursor-pointer" : ""
+                } ${
+                  selectedVideoId === video.videoId
+                    ? "bg-primary/10 hover:bg-primary/10"
+                    : "hover:bg-white/[0.03]"
+                }`}
+              >
+                <TableCell className="pl-4 md:pl-6 py-4">
+                  <div className="flex items-center gap-3 md:gap-4">
+                    {/* Mobile expand indicator */}
+                    <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform lg:hidden ${isExpanded ? "rotate-90" : ""}`} />
+                    {video.thumbnail && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={video.thumbnail}
+                        alt=""
+                        className="h-10 w-[72px] rounded-md object-cover shrink-0 hidden sm:block opacity-90"
+                      />
+                    )}
+                    <a
+                      href={`https://www.youtube.com/watch?v=${video.videoId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-sm font-medium text-foreground hover:text-primary transition-colors line-clamp-2 leading-snug"
                     >
-                      {formatNumber(Math.round(video.vph))}/hr
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">—</span>
-                  )}
+                      {video.title}
+                    </a>
+                  </div>
                 </TableCell>
-              )}
-              {showVph && (
+                {channelId && (
+                  <TableCell className="py-4 hidden md:table-cell">
+                    <MiniSparkline channelId={channelId} videoId={video.videoId} />
+                  </TableCell>
+                )}
                 <TableCell className="text-right py-4">
-                  {video.engagementRate != null ? (
-                    <div className="flex flex-col items-end gap-0.5">
+                  <span className="text-base font-bold text-foreground tabular-nums">
+                    {formatNumber(video.viewCount)}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right py-4 text-sm text-muted-foreground tabular-nums hidden lg:table-cell">
+                  {formatNumber(video.likeCount)}
+                </TableCell>
+                <TableCell className="text-right py-4 text-sm text-muted-foreground tabular-nums hidden lg:table-cell">
+                  {formatNumber(video.commentCount)}
+                </TableCell>
+                {showVph && (
+                  <TableCell className="text-right py-4">
+                    {video.vph != null ? (
                       <span
-                        className={`text-sm font-semibold tabular-nums ${
-                          avgEr != null && video.engagementRate > avgEr
-                            ? "text-sky-400"
-                            : "text-foreground"
+                        className={`text-base font-bold tabular-nums ${
+                          isAboveAvg ? "text-emerald-400" : "text-foreground"
                         }`}
                       >
-                        {video.engagementRate.toFixed(2)}%
+                        {formatNumber(Math.round(video.vph))}/hr
                       </span>
-                      {avgEr != null && (
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          Avg: {avgEr.toFixed(2)}%
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
+                )}
+                {showVph && (
+                  <TableCell className="text-right py-4 hidden xl:table-cell">
+                    {video.engagementRate != null ? (
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span
+                          className={`text-sm font-semibold tabular-nums ${
+                            avgEr != null && video.engagementRate > avgEr
+                              ? "text-sky-400"
+                              : "text-foreground"
+                          }`}
+                        >
+                          {video.engagementRate.toFixed(2)}%
                         </span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">—</span>
-                  )}
+                        {avgEr != null && (
+                          <span className="text-[10px] text-muted-foreground tabular-nums">
+                            Avg: {avgEr.toFixed(2)}%
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
+                )}
+                <TableCell className="pr-6 text-right py-4 text-sm text-muted-foreground hidden lg:table-cell">
+                  {formatDate(video.publishedAt)}
                 </TableCell>
+              </TableRow>
+              {/* Expandable detail row — mobile/tablet only */}
+              {isExpanded && (
+                <TableRow className="lg:hidden border-b border-border/50 bg-white/[0.02]">
+                  <TableCell colSpan={visibleCols} className="px-6 py-3">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                      <div>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Likes</span>
+                        <p className="font-medium text-foreground">{formatNumber(video.likeCount)}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Comments</span>
+                        <p className="font-medium text-foreground">{formatNumber(video.commentCount)}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Engagement</span>
+                        <p className="font-medium text-foreground">{video.engagementRate != null ? `${video.engagementRate.toFixed(2)}%` : "—"}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Published</span>
+                        <p className="font-medium text-foreground">{formatDate(video.publishedAt)}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
               )}
-              <TableCell className="pr-6 text-right py-4 text-sm text-muted-foreground">
-                {formatDate(video.publishedAt)}
-              </TableCell>
-            </TableRow>
+            </React.Fragment>
           );
         })}
       </TableBody>
@@ -618,6 +658,7 @@ export default function Home() {
   const [selectedType, setSelectedType] = useState<"TOTAL" | "LONG" | "SHORTS">("TOTAL");
 
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const initialFetch = useRef(true);
 
@@ -1065,9 +1106,9 @@ export default function Home() {
   // ---------------------------------------------------------------------------
 
   const TrackedView = (
-    <div className="flex gap-5 h-full min-h-0">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 h-full min-h-0">
       {/* Center panel */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 order-2 lg:order-1">
         {loadingTracked ? (
           <div className="flex items-center justify-center py-24">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1102,7 +1143,7 @@ export default function Home() {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <h2 className="text-xl font-bold tracking-tight text-foreground truncate">
+                <h2 className="text-lg md:text-xl font-bold tracking-tight text-foreground truncate">
                   {selectedData.channelTitle}
                 </h2>
                 {lastSynced && (
@@ -1122,7 +1163,7 @@ export default function Home() {
                                            selectedData.videos.filter((v) => !isShort(v));
               const filterLabel = videoFilter === "all" ? "last 30 days" : videoFilter === "shorts" ? "shorts" : "videos";
               return (
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 md:gap-3">
               <StatCard
                 label="Subscribers"
                 icon={<Users className="h-4 w-4" />}
@@ -1216,7 +1257,7 @@ export default function Home() {
                   />
 
                   {/* Video table */}
-                  <div className="rounded-lg border border-border bg-card overflow-hidden">
+                  <div className="rounded-lg border border-border bg-card overflow-x-auto">
                     <VideoTable
                       videos={filteredVideos}
                       selectedVideoId={selectedVideoId}
@@ -1236,10 +1277,36 @@ export default function Home() {
         ) : null}
       </div>
 
-      {/* Right channel list */}
+      {/* Channel list — horizontal strip on mobile, vertical sidebar on desktop */}
       {trackedChannels.length > 0 && (
-        <div className="w-60 shrink-0">
-          <div className="sticky top-0 rounded-lg border border-border bg-card overflow-hidden">
+        <div className="w-full lg:w-60 shrink-0 order-1 lg:order-2">
+          {/* Mobile: horizontal scrollable strip */}
+          <div className="lg:hidden flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+            {trackedChannels.map((ch) => (
+              <button
+                key={ch.channelId}
+                onClick={() => setSelectedChannelId(ch.channelId)}
+                className={`shrink-0 flex flex-col items-center gap-1 p-1.5 rounded-lg min-w-[52px] transition-colors ${
+                  selectedChannelId === ch.channelId
+                    ? "bg-primary/10 ring-1 ring-primary/30"
+                    : "hover:bg-white/[0.04]"
+                }`}
+              >
+                <Avatar className="h-10 w-10 border-2 border-border">
+                  <AvatarImage src={ch.channelThumbnail} alt={ch.channelTitle} />
+                  <AvatarFallback className="bg-muted text-muted-foreground text-xs">
+                    {ch.channelTitle[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-[10px] text-muted-foreground truncate max-w-[56px]">
+                  {ch.channelTitle.split(" ")[0]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Desktop: vertical card list */}
+          <div className="hidden lg:block sticky top-0 rounded-lg border border-border bg-card overflow-hidden">
             <div className="px-4 py-3 border-b border-border">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Tracking {trackedChannels.length} Channel{trackedChannels.length !== 1 ? "s" : ""}
@@ -1507,8 +1574,28 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Left sidebar */}
-      <aside className={`shrink-0 border-r border-border bg-card flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? "w-[70px]" : "w-56"}`}>
+      {/* Mobile header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 h-14 border-b border-border bg-card">
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="rounded-md p-2.5 text-muted-foreground hover:text-foreground hover:bg-white/[0.04] transition-colors"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="rounded-md bg-primary/10 p-1.5 ring-1 ring-primary/20">
+            <Activity className="h-4 w-4 text-primary" />
+          </div>
+          <span className="font-mono tracking-tighter">
+            <span className="text-sm font-bold text-foreground">VID</span>
+            <span className="text-sm font-normal text-primary">SPY</span>
+          </span>
+        </div>
+        <div className="w-10" />
+      </div>
+
+      {/* Left sidebar — hidden on mobile */}
+      <aside className={`shrink-0 border-r border-border bg-card hidden md:flex flex-col transition-all duration-300 ease-in-out ${isCollapsed ? "w-[70px]" : "w-56"}`}>
         {/* Logo / collapse toggle */}
         {isCollapsed ? (
           <button
@@ -1608,15 +1695,64 @@ export default function Home() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 px-8 py-8 overflow-y-auto overflow-x-hidden bg-background">
+      <main className="flex-1 px-4 md:px-8 pt-[72px] md:pt-8 pb-4 md:pb-8 overflow-y-auto overflow-x-hidden bg-background">
         {activeNav === "search" ? SearchView : activeNav === "competitor" ? CompetitorView : TrackedView}
       </main>
+
+      {/* Mobile sidebar overlay */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-50">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <aside className="absolute top-0 left-0 bottom-0 w-64 bg-card border-r border-border flex flex-col animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between px-4 h-14 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="rounded-md bg-primary/10 p-1.5 ring-1 ring-primary/20">
+                  <Activity className="h-4 w-4 text-primary" />
+                </div>
+                <span className="font-mono tracking-tighter">
+                  <span className="text-sm font-bold text-foreground">VID</span>
+                  <span className="text-sm font-normal text-primary">SPY</span>
+                </span>
+              </div>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <nav className="flex-1 px-3 py-4 space-y-0.5">
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveNav(item.id);
+                    localStorage.setItem("activeNav", item.id);
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
+                    activeNav === item.id
+                      ? "bg-white/[0.07] text-foreground border border-border"
+                      : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground border border-transparent"
+                  }`}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </aside>
+        </div>
+      )}
 
       {/* Delete confirmation modal */}
       {confirmDeleteId && (() => {
         const ch = trackedChannels.find((c) => c.channelId === confirmDeleteId);
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
             <div className="bg-card border border-border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4">
               <h2 className="text-base font-semibold text-foreground mb-1">Remove channel?</h2>
               <p className="text-sm text-muted-foreground mb-6">
