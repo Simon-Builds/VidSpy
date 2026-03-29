@@ -1,6 +1,6 @@
 # VidSpy
 
-A tool that tracks YouTube channels and tells you which videos are doing well right now. It checks views every hour and calculates how fast each video is growing.
+A tool that tracks YouTube channels and tells you which videos are doing well right now. It checks views every hour and calculates two things the YouTube algorithm cares about most: view velocity — how fast a video is getting views, measured as VPH (Views Per Hour) — and engagement rate (likes + comments relative to views).
 
 **Built with:** Next.js 16 · Firebase Firestore · Cloud Functions v2 · YouTube Data API v3 · Tailwind v4 · Shadcn UI
 
