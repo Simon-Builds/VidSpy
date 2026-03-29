@@ -1,101 +1,20 @@
 # VidSpy
 
-A YouTube competitor analysis platform that tracks channel performance, computes real-time Views Per Hour (VPH), and surfaces breakout content — built for enterprise teams who need signal, not noise.
+A tool that tracks YouTube channels and tells you which videos are doing well right now. It checks views every hour and calculates how fast each video is growing.
 
-**Stack:** Next.js 16 · Firebase Firestore · Cloud Functions v2 · YouTube Data API v3 · Tailwind v4 · Shadcn UI
-
----
-
-## The VidSpy Smart Polling Engine
-
-VidSpy's Cloud Function runs every hour, but not every video gets the same treatment. The polling engine uses a three-phase frequency model that balances data freshness against YouTube API quota — automatically adjusting based on video age and live VPH performance.
-
-### Phase A — Active Scouting (0–7 days)
-
-Every video published within the last **7 days (168 hours)** is polled **every hour**. This is the highest-resolution window for competitive analysis. VPH is computed as a true time-delta:
-
-```
-VPH = (currentViews − previousViews) / actualHoursBetween
-```
-
-### Phase B — Dormant Tracking (7–30 days)
-
-Once a video passes the 7-day mark, it moves to a **12-hour polling cadence** to preserve API quota. VPH is normalised over the fixed interval:
-
-```
-VPH = (currentViews − previousViews) / 12
-```
-
-This keeps a consistent, comparable metric across videos polled at different times.
-
-### Phase C — The Viral Exception
-
-If a dormant video (> 7 days old) is polled and its VPH is **≥ 2× the channel's current average VPH**, it is automatically upgraded back to **hourly polling** for a rolling 24-hour window.
-
-**The cooldown mechanism:** To prevent a viral video from staying in high-frequency polling indefinitely, every video in "Viral Mode" carries two state flags stored in Firestore:
-
-- `isViralOverride: boolean` — whether hourly polling is active
-- `viralUpgradeAt: Timestamp` — when the current 24-hour window started
-
-On each run, if `viralUpgradeAt` is older than 24 hours, the system re-evaluates:
-- VPH still ≥ 2× average → the window resets (`viralUpgradeAt = now`), hourly polling continues
-- VPH dropped below threshold → `isViralOverride` is set to `false`, the video returns to Phase B
-
-### Hard Cutoff (30 days+)
-
-Videos older than 30 days are excluded from all polling. No API calls, no snapshot writes, no wasted quota. The 30-day window is sufficient for competitive intelligence — anything beyond that is historical data.
-
----
-
-## Metrics Display
-
-### VPH (Views Per Hour)
-
-In the Tracked Channels view, each video's VPH is shown in the table. VPH numbers appear in **green** when a video is currently above the channel's live average — making breakout content immediately visible at a glance.
-
-The channel's average VPH is displayed as a stat card in the channel header, giving context for interpreting individual video performance.
-
-### Engagement Rate
-
-Every snapshot also stores an **Engagement Rate** — a transparent measure of how well a video is converting views into active audience interaction:
-
-```
-engagementRate = ((likeCount + commentCount) / viewCount) × 100
-```
-
-- Shown as a percentage (e.g. `5.42%`) in the Engagement column
-- Highlighted in **blue** when a video is above the channel's current average
-- The channel average is shown as a sub-label beneath each value (`Avg: 3.2%`)
-- Computed directly from snapshot data — no additional API calls required
-- Null-safe: returns `—` when `viewCount` is zero or unavailable
-
----
-
-## Firestore Data Model
-
-```
-tracked_channels/{channelId}
-  channelTitle, channelThumbnail, uploadsPlaylistId
-  subscriberCount, totalViews
-  avgEngagementRate              ← channel average ER, updated each poll
-  lastUpdated
-  videos: VideoMeta[]            ← identity + publish metadata
-
-  /snapshots/{timestamp_videoId}
-    videoId, viewCount, likeCount, commentCount
-    vph, engagementRate          ← immutable historical record
-    recordedAt
-
-  /video_states/{videoId}
-    isViralOverride: boolean     ← mutable polling state
-    viralUpgradeAt: Timestamp
-```
-
-Snapshots are append-only and never overwritten — the full time-series is preserved for future historical analysis.
+**Built with:** Next.js 16 · Firebase Firestore · Cloud Functions v2 · YouTube Data API v3 · Tailwind v4 · Shadcn UI
 
 ---
 
 ## Getting Started
+
+### What You Need
+
+- Node.js 18+
+- A Firebase project with Firestore turned on
+- A YouTube Data API v3 key
+
+### Install & Run
 
 ```bash
 npm install
@@ -131,3 +50,102 @@ cd functions
 npm install
 firebase deploy --only functions
 ```
+
+### Deploy to Vercel
+
+```bash
+vercel --prod
+```
+
+Make sure to add `YOUTUBE_API_KEY` to your Vercel project's environment variables. The Search page won't work without it.
+
+---
+
+## Build Approach
+
+Everything lives in one file — `app/page.tsx`. There are three views (Search, Tracked Channels, Competitor Analysis) and they switch using state, not routes. This makes switching between views instant and keeps things simple.
+
+**Firebase does the backend work.** Firestore saves all the channel and video data. A Cloud Function runs every hour, checks YouTube for new stats, and saves them. No custom server needed.
+
+**Smart polling saves API quota.** New videos (under 7 days old) get checked every hour. Older videos (7–30 days) only get checked every 12 hours. If an older video suddenly blows up, it gets bumped back to hourly checks. Videos older than 30 days stop getting checked.
+
+**One place for all filters.** Search, content type, date range, min/max for views, VPH, likes, comments, and engagement — all go through one `useMemo` block. This replaced three copies of the same filtering code.
+
+**Nothing resets on refresh.** Your selected channel, view, sidebar, and filters are saved in the browser so they're still there when you come back.
+
+**Works on phones.** Hamburger menu, sideways-scrolling channel list, and rows that expand when you tap them. Works from 375px screens and up.
+
+---
+
+## How Polling Works
+
+A Cloud Function runs every hour. But not every video gets checked every time — that would use too much YouTube API quota. So videos get checked at different speeds depending on how old they are.
+
+### New Videos (0–7 days)
+
+Checked **every hour**. This is when a video's growth matters most. VPH is calculated like this:
+
+```
+VPH = (current views − previous views) / hours between checks
+```
+
+### Older Videos (7–30 days)
+
+Checked **every 12 hours**. They're past their peak, so we don't need to watch them as closely. VPH is calculated the same way but over the 12-hour gap.
+
+### Viral Comeback
+
+If an older video suddenly gets a VPH that's **2x the channel's average**, it gets bumped back to hourly checks for 24 hours. After 24 hours, the system checks again — if it's still hot, the hourly window resets. If it's cooled off, it goes back to 12-hour checks.
+
+This uses two fields in Firestore:
+
+- `isViralOverride` — is this video in viral mode?
+- `viralUpgradeAt` — when did viral mode start?
+
+### 30+ Days
+
+Videos older than 30 days don't get checked at all. No API calls, no data saved.
+
+---
+
+## Metrics
+
+### VPH (Views Per Hour)
+
+Each video shows its VPH in the table. If a video's VPH is higher than the channel's average, it shows up in **green** so you can spot it fast.
+
+### Engagement Rate
+
+How much people interact with a video compared to how many watched it:
+
+```
+engagement = ((likes + comments) / views) × 100
+```
+
+- Shown as a percentage like `5.42%`
+- **Blue** if it's above the channel average
+- Shows `—` if there are no views yet
+
+---
+
+## Database Structure
+
+```
+tracked_channels/{channelId}
+  channelTitle, channelThumbnail, uploadsPlaylistId
+  subscriberCount, totalViews
+  avgEngagementRate              ← channel average, updated each poll
+  lastUpdated
+  videos: VideoMeta[]            ← basic info about each video
+
+  /snapshots/{timestamp_videoId}
+    videoId, viewCount, likeCount, commentCount
+    vph, engagementRate          ← saved and never changed
+    recordedAt
+
+  /video_states/{videoId}
+    isViralOverride: boolean     ← is viral mode on?
+    viralUpgradeAt: Timestamp    ← when viral mode started
+```
+
+Snapshots are never overwritten. Every check adds a new one, so the full history is always there.
