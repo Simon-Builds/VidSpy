@@ -1194,7 +1194,7 @@ export default function Home() {
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-base font-bold text-foreground truncate">{result.channelTitle}</p>
-              <p className="text-xs text-muted-foreground">{result.videos.length} videos in last 30 days</p>
+              <p className="text-xs text-muted-foreground">Most recent {result.videos.length} videos this channel has uploaded</p>
             </div>
             {(() => {
               const alreadyTracked = trackedChannels.some((ch) => ch.channelId === result.channelId);

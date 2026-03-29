@@ -129,51 +129,32 @@ export async function fetchPlaylistVideos(
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - 30);
 
-  const allItems: VideoItem[] = [];
-  let pageToken: string | undefined;
+  const url = new URL(`${YT_BASE}/playlistItems`);
+  url.searchParams.set("part", "snippet,contentDetails");
+  url.searchParams.set("playlistId", playlistId);
+  url.searchParams.set("maxResults", "50");
+  url.searchParams.set("key", apiKey);
 
-  do {
-    const url = new URL(`${YT_BASE}/playlistItems`);
-    url.searchParams.set("part", "snippet,contentDetails");
-    url.searchParams.set("playlistId", playlistId);
-    url.searchParams.set("maxResults", "50");
-    url.searchParams.set("key", apiKey);
-    if (pageToken) url.searchParams.set("pageToken", pageToken);
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message ?? `playlistItems.list failed (${res.status})`);
+  }
 
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message ?? `playlistItems.list failed (${res.status})`);
-    }
+  const data = await res.json();
+  const items: RawPlaylistItem[] = data.items ?? [];
 
-    const data = await res.json();
-    const items: RawPlaylistItem[] = data.items ?? [];
-
-    for (const item of items) {
-      if (new Date(item.snippet.publishedAt) >= cutoff) {
-        allItems.push({
-          videoId: item.contentDetails.videoId,
-          title: item.snippet.title,
-          publishedAt: item.snippet.publishedAt,
-          thumbnail: item.snippet.thumbnails?.medium?.url ?? "",
-          viewCount: null,
-          likeCount: null,
-          commentCount: null,
-          durationSeconds: null,          // filled in by fetchVideoStats
-          isShort: false,                 // placeholder — overridden by checkIfShorts spread in route.ts
-        });
-      }
-    }
-
-    // Stop paginating if the last item on this page is older than the cutoff
-    const lastItem = items[items.length - 1];
-    const lastDate = lastItem ? new Date(lastItem.snippet.publishedAt) : new Date(0);
-    if (lastDate < cutoff || !data.nextPageToken) break;
-
-    pageToken = data.nextPageToken;
-  } while (true);
-
-  return allItems;
+  return items.map((item) => ({
+    videoId: item.contentDetails.videoId,
+    title: item.snippet.title,
+    publishedAt: item.snippet.publishedAt,
+    thumbnail: item.snippet.thumbnails?.medium?.url ?? "",
+    viewCount: null,
+    likeCount: null,
+    commentCount: null,
+    durationSeconds: null,
+    isShort: false,
+  }));
 }
 
 /**
